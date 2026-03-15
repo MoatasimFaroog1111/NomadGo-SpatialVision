@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android APK (Release)
 
 on:
   push:
@@ -15,9 +15,10 @@ on:
 
 jobs:
   buildForAndroid:
-    name: Build for Android
+    name: Build for Android (Release Signed)
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -36,8 +37,21 @@ jobs:
 
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
+        with:
+          tool-cache: false
+          android: false
+          dotnet: true
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
 
-      - name: Build Android APK
+      - name: Decode Keystore
+        run: |
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > $GITHUB_WORKSPACE/nomadgo-release.keystore
+          echo "Keystore decoded successfully"
+
+      - name: Build Android APK (Release)
         uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
@@ -48,7 +62,7 @@ jobs:
           targetPlatform: Android
           androidExportType: androidPackage
           androidTargetSdkVersion: AndroidApiLevel34
-          androidKeystoreName: ${{ secrets.ANDROID_KEYSTORE_BASE64 && 'user.keystore' || '' }}
+          androidKeystoreName: nomadgo-release.keystore
           androidKeystoreBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           androidKeystorePass: ${{ secrets.ANDROID_KEYSTORE_PASS }}
           androidKeyaliasName: ${{ secrets.ANDROID_KEYALIAS_NAME }}
@@ -56,9 +70,27 @@ jobs:
           buildName: NomadGo-SpatialVision
           versioning: Semantic
 
-      - name: Upload APK
+      - name: Upload Signed APK
         uses: actions/upload-artifact@v4
         with:
-          name: NomadGo-SpatialVision-APK
+          name: NomadGo-SpatialVision-Release-APK
           path: build/Android
-          retention-days: 14
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: "NomadGo SpatialVision v${{ github.run_number }}"
+          body: |
+            ## NomadGo SpatialVision - Release Build
+            - Signed Release APK (arm64-v8a)
+            - YOLOv8n ONNX model for object detection
+            - AR Foundation + ARCore support
+            - Android 7.0+ (API 24) required
+          files: build/Android/*.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
