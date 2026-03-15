@@ -1,0 +1,58 @@
+
+> rest-express@1.0.0 dev
+> NODE_ENV=development tsx server/index.ts
+
+[1G[0K7:11:37 AM [express] serving on port 5000
+Browserslist: browsers data (caniuse-lite) is 17 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+7:11:39 AM [express] GET /api/stats 200 in 2ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":3.003743398}
+7:11:39 AM [express] GET /api/pulses 304 in 0ms :: {"total":0,"pulses":[]}
+7:11:42 AM [express] GET /api/pulses 304 in 0ms :: {"total":0,"pulses":[]}
+7:11:42 AM [express] GET /api/stats 200 in 0ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":5.997429208}
+7:11:45 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":9.004597198}
+7:11:45 AM [express] GET /api/pulses 304 in 1ms :: {"total":0,"pulses":[]}
+7:11:48 AM [express] GET /api/pulses 304 in 0ms :: {"total":0,"pulses":[]}
+7:11:48 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":11.997650921}
+7:11:51 AM [express] GET /api/pulses 304 in 0ms :: {"total":0,"pulses":[]}
+7:11:51 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":15.000469223}
+7:11:54 AM [express] GET /api/pulses 304 in 0ms :: {"total":0,"pulses":[]}
+7:11:54 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":17.99878582}
+7:11:57 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":21.007389757}
+7:11:57 AM [express] GET /api/pulses 304 in 0ms :: {"total":0,"pulses":[]}
+7:12:00 AM [express] GET /api/pulses 304 in 1ms :: {"total":0,"pulses":[]}
+7:12:00 AM [express] GET /api/stats 200 in 2ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":24.000906323}
+7:12:03 AM [express] GET /api/pulses 304 in 1ms :: {"total":0,"pulses":[]}
+7:12:03 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":27.00419974}
+7:12:06 AM [express] GET /api/pulses 304 in 0ms :: {"total":0,"pulses":[]}
+7:12:06 AM [express] GET /api/stats 200 in 0ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":30.000365546}
+7:12:09 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":33.001669061}
+7:12:09 AM [express] GET /api/pulses 304 in 0ms :: {"total":0,"pulses":[]}
+7:12:12 AM [express] GET /api/pulses 304 in 1ms :: {"total":0,"pulses":[]}
+7:12:12 AM [express] GET /api/stats 200 in 0ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":36.004202346}
+7:12:15 AM [express] GET /api/pulses 304 in 1ms :: {"total":0,"pulses":[]}
+7:12:15 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":39.002744351}
+7:12:18 AM [express] GET /api/pulses 304 in 0ms :: {"total":0,"pulses":[]}
+7:12:18 AM [express] GET /api/stats 200 in 0ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":42.005349095}
+7:12:21 AM [express] GET /api/pulses 304 in 0ms :: {"total":0,"pulses":[]}
+7:12:21 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":45.015715359}
+7:12:24 AM [express] GET /api/stats 200 in 0ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":48.002287953}
+7:12:24 AM [express] GET /api/pulses 304 in 0ms :: {"total":0,"pulses":[]}
+7:12:27 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":50.995432047}
+7:12:27 AM [express] GET /api/pulses 304 in 1ms :: {"total":0,"pulses":[]}
+7:12:30 AM [express] GET /api/pulses 304 in 1ms :: {"total":0,"pulses":[]}
+7:12:30 AM [express] GET /api/stats 200 in 0ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":54.00209824}
+7:12:33 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":57.012484092}
+7:12:33 AM [express] GET /api/pulses 304 in 1ms :: {"total":0,"pulses":[]}
+7:12:36 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":59.996649795}
+7:12:36 AM [express] GET /api/pulses 304 in 0ms :: {"total":0,"pulses":[]}
+7:12:39 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":63.001379617}
+7:12:39 AM [express] GET /api/pulses 304 in 0ms :: {"total":0,"pulses":[]}
+7:12:42 AM [express] GET /api/stats 200 in 0ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":66.001006949}
+7:12:42 AM [express] GET /api/pulses 304 in 1ms :: {"total":0,"pulses":[]}
+7:12:45 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":69.00774548}
+7:12:45 AM [express] GET /api/pulses 304 in 0ms :: {"total":0,"pulses":[]}
+7:12:48 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":71.999727523}
+7:12:48 AM [express] GET /api/pulses 304 in 1ms :: {"total":0,"pulses":[]}
+7:12:51 AM [express] GET /api/stats 200 in 1ms :: {"totalPulses":0,"uniqueSessions":0,"uniqueDevices":0,"latestPulse":null,"serverUptime":75.000805246}
+7:12:51 AM [express] GET /api/pulses 304 in 0ms :: {"total":0,"pulses":[]}
