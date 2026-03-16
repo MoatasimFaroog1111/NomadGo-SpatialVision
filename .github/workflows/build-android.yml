@@ -50,7 +50,7 @@ jobs:
         run: |
           mkdir -p /tmp/keystore
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > /tmp/keystore/nomadgo-release.keystore
-          echo "Keystore decoded to /tmp/keystore/"
+          echo "Keystore size: $(wc -c < /tmp/keystore/nomadgo-release.keystore) bytes"
 
       - name: Build Android APK (Release)
         uses: game-ci/unity-builder@v4
