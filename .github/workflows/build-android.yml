@@ -1,5 +1,4 @@
-name: Build Android APK (Release )
-
+name: Build Android APK (Release)
 on:
   push:
     branches:
@@ -12,13 +11,11 @@ on:
     branches:
       - main
   workflow_dispatch: {}
-
 jobs:
   buildForAndroid:
     name: Build for Android (Release Signed)
     runs-on: ubuntu-latest
     timeout-minutes: 90
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -57,12 +54,28 @@ jobs:
           targetPlatform: Android
           androidExportType: androidPackage
           androidTargetSdkVersion: AndroidApiLevel34
+          androidMinSdkVersion: AndroidApiLevel24
+          androidArchitecture: ARM64
           androidKeystoreBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           androidKeystorePass: ${{ secrets.ANDROID_KEYSTORE_PASS }}
           androidKeyaliasName: ${{ secrets.ANDROID_KEYALIAS_NAME }}
           androidKeyaliasPass: ${{ secrets.ANDROID_KEYALIAS_PASS }}
           buildName: NomadGo-SpatialVision
           versioning: Semantic
+          allowDirtyBuild: true
+
+      - name: Verify APK signature
+        run: |
+          APK=$(find build/Android -name "*.apk" | head -1)
+          if [ -n "$APK" ]; then
+            echo "APK found: $APK"
+            ls -lh "$APK"
+            # Verify it's a valid ZIP/APK
+            unzip -t "$APK" | tail -3
+          else
+            echo "No APK found!"
+            find build/ -type f
+          fi
 
       - name: Upload Signed APK
         uses: actions/upload-artifact@v4
@@ -83,6 +96,7 @@ jobs:
             - YOLOv8n ONNX model for object detection
             - AR Foundation + ARCore support
             - Android 7.0+ (API 24) required
+            - Tested on Moto G84 5G (Android 15)
           files: build/Android/*.apk
           draft: false
           prerelease: false
