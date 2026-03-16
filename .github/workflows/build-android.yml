@@ -46,9 +46,11 @@ jobs:
           docker-images: true
           swap-storage: true
 
-      - name: Decode Keystore
+      - name: Decode Keystore (outside workspace)
         run: |
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > $GITHUB_WORKSPACE/nomadgo-release.keystore
+          mkdir -p /tmp/keystore
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > /tmp/keystore/nomadgo-release.keystore
+          echo "Keystore decoded to /tmp/keystore/"
 
       - name: Build Android APK (Release)
         uses: game-ci/unity-builder@v4
@@ -61,7 +63,7 @@ jobs:
           targetPlatform: Android
           androidExportType: androidPackage
           androidTargetSdkVersion: AndroidApiLevel34
-          androidKeystoreName: nomadgo-release.keystore
+          androidKeystoreName: /tmp/keystore/nomadgo-release.keystore
           androidKeystoreBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           androidKeystorePass: ${{ secrets.ANDROID_KEYSTORE_PASS }}
           androidKeyaliasName: ${{ secrets.ANDROID_KEYALIAS_NAME }}
