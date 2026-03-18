@@ -43,6 +43,66 @@ jobs:
           docker-images: true
           swap-storage: true
 
+      - name: Patch AndroidManifest - Remove OpenGL ES 3.0 requirement
+        run: |
+          MANIFEST="Assets/Plugins/Android/AndroidManifest.xml"
+          if [ -f "$MANIFEST" ]; then
+            # إزالة شرط OpenGL ES 3.0 الإجباري
+            sed -i 's/<uses-feature android:glEsVersion="0x00030000" android:required="true"/<uses-feature android:glEsVersion="0x00020000" android:required="true"/g' "$MANIFEST"
+            echo "Patched: $MANIFEST"
+            cat "$MANIFEST"
+          else
+            echo "Creating AndroidManifest.xml with correct settings..."
+            mkdir -p Assets/Plugins/Android
+            cat > "$MANIFEST" << 'MANIFEST_EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.nomadgo.spatialvision"
+    android:versionCode="1"
+    android:versionName="1.0.0">
+
+    <uses-sdk android:minSdkVersion="24" android:targetSdkVersion="34" />
+
+    <!-- Permissions -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.CAMERA" />
+
+    <!-- OpenGL ES 2.0 minimum (NOT 3.0 required) -->
+    <uses-feature android:glEsVersion="0x00020000" android:required="true" />
+
+    <!-- ARCore optional (not required to install) -->
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false" />
+
+    <!-- Touchscreen optional -->
+    <uses-feature android:name="android.hardware.touchscreen" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen.multitouch" android:required="false" />
+    <uses-feature android:name="android.hardware.touchscreen.multitouch.distinct" android:required="false" />
+
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/app_icon"
+        android:theme="@style/UnityThemeSelector">
+        <activity
+            android:name="com.unity3d.player.UnityPlayerActivity"
+            android:label="@string/app_name"
+            android:screenOrientation="fullSensor"
+            android:launchMode="singleTask"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
+            android:hardwareAccelerated="false"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <meta-data android:name="unityplayer.UnityActivity" android:value="true" />
+        </activity>
+    </application>
+</manifest>
+MANIFEST_EOF
+            echo "Created new AndroidManifest.xml"
+          fi
+
       - name: Build Android APK (Release)
         uses: game-ci/unity-builder@v4
         env:
@@ -64,18 +124,12 @@ jobs:
           versioning: Semantic
           allowDirtyBuild: true
 
-      - name: Verify APK signature
+      - name: Verify APK
         run: |
           APK=$(find build/Android -name "*.apk" | head -1)
-          if [ -n "$APK" ]; then
-            echo "APK found: $APK"
-            ls -lh "$APK"
-            # Verify it's a valid ZIP/APK
-            unzip -t "$APK" | tail -3
-          else
-            echo "No APK found!"
-            find build/ -type f
-          fi
+          echo "APK: $APK"
+          ls -lh "$APK"
+          unzip -p "$APK" AndroidManifest.xml | strings | grep -i "gles\|feature\|sdk" || true
 
       - name: Upload Signed APK
         uses: actions/upload-artifact@v4
@@ -93,10 +147,9 @@ jobs:
           body: |
             ## NomadGo SpatialVision - Release Build
             - Signed Release APK (arm64-v8a)
-            - YOLOv8n ONNX model for object detection
-            - AR Foundation + ARCore support
-            - Android 7.0+ (API 24) required
-            - Tested on Moto G84 5G (Android 15)
+            - Compatible with Moto G84 5G (Android 15)
+            - OpenGL ES 2.0+ (not 3.0 required)
+            - ARCore optional
           files: build/Android/*.apk
           draft: false
           prerelease: false
