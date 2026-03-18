@@ -44,5 +44,6 @@
     "show_memory_monitor": true,
     "log_tracking_events": false,
     "verbose_mode": false
-  }
+  },
+  "_build_trigger": "fix-opengl-es-20260318075057"
 }
