@@ -84,6 +84,11 @@ namespace NomadGo.AppShell
             isMirrored = webCamTexture.videoVerticallyMirrored;
             Debug.Log($"[CameraFix] Ready: {webCamTexture.width}x{webCamTexture.height} rot={rotAngle} mirror={isMirrored}");
 
+            // On Moto G84 5G (Android portrait), the camera returns rotAngle=90
+            // but the image appears upside-down. Adding 180 corrects this.
+            // Normalize to 0/90/180/270
+            rotAngle = (rotAngle + 180) % 360;
+
             // Create material — Hidden/BlitCopy is the most reliable for GL drawing
             var shader = Shader.Find("Hidden/BlitCopy");
             if (shader == null || !shader.isSupported) shader = Shader.Find("Unlit/Texture");

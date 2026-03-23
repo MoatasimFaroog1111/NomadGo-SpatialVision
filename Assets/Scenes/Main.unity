@@ -526,6 +526,8 @@ GameObject:
   - component: {fileID: 700004}
   - component: {fileID: 700005}
   - component: {fileID: 700006}
+  - component: {fileID: 700007}
+  - component: {fileID: 700008}
   m_Layer: 0
   m_Name: SystemManagers
   m_TagString: Untagged
@@ -618,3 +620,29 @@ SceneRoots:
   - {fileID: 500001}
   - {fileID: 600001}
   - {fileID: 700001}
+--- !u!114 &700007
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ea994929d42de4913e9cb0c02304dd60, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  cameraManager: {fileID: 0}
+  inferenceEngine: {fileID: 0}
+--- !u!114 &700008
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 962179e78105464faa2d3e42a365fbf7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
