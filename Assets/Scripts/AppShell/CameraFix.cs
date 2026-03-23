@@ -6,90 +6,38 @@ using UnityEngine.XR.ARFoundation;
 namespace NomadGo.AppShell
 {
     /// <summary>
-    /// Fixes camera display for ARFoundation on Android.
-    /// Handles black screen and upside-down issues on Moto G84 5G.
-    /// Uses WebCamTexture as fallback when ARCore is unavailable.
+    /// Camera display fix for Android - uses WebCamTexture directly on a RawImage.
+    /// Handles orientation correction for Moto G84 5G.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class CameraFix : MonoBehaviour
     {
         private Camera cam;
-        private ARCameraBackground arBackground;
-        private ARCameraManager arCameraManager;
         private WebCamTexture webCamTexture;
-        private RawImage backgroundImage;
-        private bool arWorking = false;
-        private bool fallbackStarted = false;
+        private RawImage bgImage;
+        private GameObject bgCanvas;
 
         private void Awake()
         {
             cam = GetComponent<Camera>();
-            arBackground = GetComponent<ARCameraBackground>();
-            arCameraManager = GetComponent<ARCameraManager>();
-
             if (cam != null)
             {
                 cam.clearFlags = CameraClearFlags.SolidColor;
                 cam.backgroundColor = Color.black;
                 cam.allowHDR = false;
                 cam.allowMSAA = false;
+                cam.depth = -10;
             }
         }
 
         private void Start()
         {
-            // Ensure ARCameraBackground exists
-            if (arBackground == null)
-            {
-                arBackground = gameObject.AddComponent<ARCameraBackground>();
-            }
-
-            // Ensure ARCameraManager exists
-            if (arCameraManager == null)
-            {
-                arCameraManager = gameObject.AddComponent<ARCameraManager>();
-                arCameraManager.autoFocusRequested = true;
-                arCameraManager.requestedFacingDirection = CameraFacingDirection.World;
-            }
-
-            // Subscribe to AR frames
-            arCameraManager.frameReceived += OnARFrameReceived;
-
-            // Start fallback timer
-            StartCoroutine(CheckARAndFallback());
+            StartCoroutine(StartCamera());
         }
 
-        private void OnARFrameReceived(ARCameraFrameEventArgs args)
+        private IEnumerator StartCamera()
         {
-            arWorking = true;
-        }
-
-        private IEnumerator CheckARAndFallback()
-        {
-            // Wait for AR to initialize
-            yield return new WaitForSeconds(4f);
-
-            if (!arWorking && !fallbackStarted)
-            {
-                Debug.LogWarning("[CameraFix] ARCore not working after 4s. Starting WebCamTexture fallback.");
-                StartWebCamFallback();
-            }
-        }
-
-        private void StartWebCamFallback()
-        {
-            fallbackStarted = true;
-
-            // Disable AR background
-            if (arBackground != null)
-                arBackground.enabled = false;
-
             // Request camera permission
-            StartCoroutine(RequestAndStartCamera());
-        }
-
-        private IEnumerator RequestAndStartCamera()
-        {
             yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
 
             if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
@@ -98,114 +46,135 @@ namespace NomadGo.AppShell
                 yield break;
             }
 
-            // Find back camera
-            string cameraName = "";
+            // Find back-facing camera
+            string camName = "";
             foreach (var device in WebCamTexture.devices)
             {
+                Debug.Log($"[CameraFix] Device: {device.name}, front: {device.isFrontFacing}");
                 if (!device.isFrontFacing)
                 {
-                    cameraName = device.name;
+                    camName = device.name;
                     break;
                 }
             }
 
-            if (string.IsNullOrEmpty(cameraName) && WebCamTexture.devices.Length > 0)
-                cameraName = WebCamTexture.devices[0].name;
+            if (string.IsNullOrEmpty(camName) && WebCamTexture.devices.Length > 0)
+                camName = WebCamTexture.devices[0].name;
 
-            if (string.IsNullOrEmpty(cameraName))
+            if (string.IsNullOrEmpty(camName))
             {
-                Debug.LogError("[CameraFix] No camera device found!");
+                Debug.LogError("[CameraFix] No camera found!");
                 yield break;
             }
 
-            webCamTexture = new WebCamTexture(cameraName, 1280, 720, 30);
+            Debug.Log($"[CameraFix] Starting camera: {camName}");
+            webCamTexture = new WebCamTexture(camName, 1280, 720, 30);
             webCamTexture.Play();
 
-            yield return new WaitUntil(() => webCamTexture.width > 16);
+            // Wait for camera to start
+            float timeout = 5f;
+            while (webCamTexture.width <= 16 && timeout > 0)
+            {
+                timeout -= Time.deltaTime;
+                yield return null;
+            }
 
-            // Create background quad to display camera
-            CreateCameraBackground();
+            if (webCamTexture.width <= 16)
+            {
+                Debug.LogError("[CameraFix] Camera failed to start!");
+                yield break;
+            }
 
-            Debug.Log($"[CameraFix] WebCamTexture fallback active: {cameraName} {webCamTexture.width}x{webCamTexture.height}");
+            Debug.Log($"[CameraFix] Camera started: {webCamTexture.width}x{webCamTexture.height}, rotation: {webCamTexture.videoRotationAngle}");
+
+            // Create background canvas
+            CreateBackground();
         }
 
-        private void CreateCameraBackground()
+        private void CreateBackground()
         {
-            // Create a Canvas in world space behind everything
-            var canvasGO = new GameObject("CameraBackground");
-            var canvas = canvasGO.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceCamera;
-            canvas.worldCamera = cam;
-            canvas.planeDistance = cam.farClipPlane - 1f;
+            // Create Screen Space Overlay canvas (always visible, no camera needed)
+            bgCanvas = new GameObject("CamBG_Canvas");
+            var canvas = bgCanvas.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = -100;
 
-            var canvasScaler = canvasGO.AddComponent<UnityEngine.UI.CanvasScaler>();
-            canvasScaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            canvasScaler.referenceResolution = new Vector2(1080, 1920);
+            bgCanvas.AddComponent<CanvasScaler>();
+            bgCanvas.AddComponent<GraphicRaycaster>();
 
-            // Create RawImage
-            var imageGO = new GameObject("CameraImage");
-            imageGO.transform.SetParent(canvasGO.transform, false);
-            backgroundImage = imageGO.AddComponent<RawImage>();
-            backgroundImage.texture = webCamTexture;
+            // Create RawImage that fills the entire screen
+            var imgGO = new GameObject("CamBG_Image");
+            imgGO.transform.SetParent(bgCanvas.transform, false);
 
-            var rect = imageGO.GetComponent<RectTransform>();
+            bgImage = imgGO.AddComponent<RawImage>();
+            bgImage.texture = webCamTexture;
+            bgImage.color = Color.white;
+
+            var rect = imgGO.GetComponent<RectTransform>();
             rect.anchorMin = Vector2.zero;
             rect.anchorMax = Vector2.one;
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
 
-            // Fix orientation
-            FixCameraOrientation();
+            // Apply orientation fix
+            ApplyOrientation();
+
+            Debug.Log("[CameraFix] Camera background created successfully!");
         }
 
-        private void FixCameraOrientation()
+        private void ApplyOrientation()
         {
-            if (backgroundImage == null || webCamTexture == null) return;
+            if (bgImage == null || webCamTexture == null) return;
 
             int rotation = webCamTexture.videoRotationAngle;
             bool mirrored = webCamTexture.videoVerticallyMirrored;
 
-            Debug.Log($"[CameraFix] Camera rotation: {rotation}, mirrored: {mirrored}");
+            Debug.Log($"[CameraFix] Rotation={rotation}, Mirrored={mirrored}");
 
-            // Apply rotation to RawImage
-            backgroundImage.rectTransform.localEulerAngles = new Vector3(0, 0, -rotation);
+            // Apply rotation
+            bgImage.rectTransform.localEulerAngles = new Vector3(0, 0, -rotation);
 
-            // Fix mirror
+            // Apply mirror correction
             if (mirrored)
             {
-                backgroundImage.uvRect = new Rect(0, 1, 1, -1);
+                // Flip UV vertically
+                bgImage.uvRect = new Rect(0, 1, 1, -1);
             }
             else
             {
-                backgroundImage.uvRect = new Rect(0, 0, 1, 1);
+                bgImage.uvRect = new Rect(0, 0, 1, 1);
+            }
+
+            // Scale to fill screen correctly when rotated
+            if (rotation == 90 || rotation == 270)
+            {
+                float screenAspect = (float)Screen.width / Screen.height;
+                float camAspect = (float)webCamTexture.height / webCamTexture.width;
+                float scale = screenAspect / camAspect;
+                bgImage.rectTransform.localScale = new Vector3(scale, scale, 1f);
             }
         }
 
         private void Update()
         {
-            if (cam != null && cam.clearFlags != CameraClearFlags.SolidColor)
+            // Keep camera flags correct
+            if (cam != null)
             {
                 cam.clearFlags = CameraClearFlags.SolidColor;
                 cam.backgroundColor = Color.black;
-            }
-
-            // Update orientation in case it changes
-            if (fallbackStarted && backgroundImage != null && webCamTexture != null && webCamTexture.isPlaying)
-            {
-                FixCameraOrientation();
             }
         }
 
         private void OnDestroy()
         {
-            if (arCameraManager != null)
-                arCameraManager.frameReceived -= OnARFrameReceived;
-
             if (webCamTexture != null)
             {
                 webCamTexture.Stop();
                 webCamTexture = null;
+            }
+            if (bgCanvas != null)
+            {
+                Destroy(bgCanvas);
             }
         }
     }
