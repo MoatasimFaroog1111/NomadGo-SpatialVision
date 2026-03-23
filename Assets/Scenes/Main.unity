@@ -528,6 +528,8 @@ GameObject:
   - component: {fileID: 700006}
   - component: {fileID: 700007}
   - component: {fileID: 700008}
+  - component: {fileID: 700009}
+  - component: {fileID: 700010}
   m_Layer: 0
   m_Name: SystemManagers
   m_TagString: Untagged
@@ -644,5 +646,35 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 962179e78105464faa2d3e42a365fbf7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &700009
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 44ee67b6440d0cd93edeac649fb1cbdf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  startScanButton: {fileID: 0}
+  stopScanButton: {fileID: 0}
+  exportSessionButton: {fileID: 0}
+  statusText: {fileID: 0}
+  scanPanel: {fileID: 0}
+  resultsPanel: {fileID: 0}
+--- !u!114 &700010
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 700000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a1b2c3d4e5f6789012345678901234ab, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
