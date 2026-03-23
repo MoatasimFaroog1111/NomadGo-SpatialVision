@@ -93,7 +93,7 @@ namespace NomadGo.Vision
                 inputRect = new RectInt(0, 0, cpuImage.width, cpuImage.height),
                 outputDimensions = new Vector2Int(cpuImage.width, cpuImage.height),
                 outputFormat = TextureFormat.RGBA32,
-                transformation = XRCpuImage.Transformation.MirrorY
+                transformation = XRCpuImage.Transformation.None
             };
 
             int size = cpuImage.GetConvertedDataSize(conversionParams);
