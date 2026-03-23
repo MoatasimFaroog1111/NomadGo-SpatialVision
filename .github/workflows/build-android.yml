@@ -60,65 +60,56 @@ jobs:
           versioning: Semantic
           allowDirtyBuild: true
 
-      - name: Patch APK - Fix glEsVersion for Moto G84 5G
+      - name: Patch APK glEsVersion for Moto G84 5G
         run: |
           APK=$(find build/Android -name "*.apk" | head -1)
-          echo "Patching APK: $APK"
-          pip3 install -q zipalign-fix 2>/dev/null || true
-          
-          python3 - "$APK" << 'PYEOF'
-          import sys, zipfile, struct, os, shutil
-          
-          apk_path = sys.argv[1]
-          print(f"Input APK: {apk_path} ({os.path.getsize(apk_path)//1024//1024}MB)")
-          
-          with zipfile.ZipFile(apk_path, 'r') as z:
-              manifest_data = bytearray(z.read('AndroidManifest.xml'))
-          
+          echo "Patching: $APK"
+          TMP_APK="/tmp/patched.apk"
+          python3 -c "
+          import sys, zipfile, struct, os
+          apk = '$APK'
+          tmp = '$TMP_APK'
+          with zipfile.ZipFile(apk, 'r') as z:
+              manifest = bytearray(z.read('AndroidManifest.xml'))
           patched = 0
-          for i in range(0, len(manifest_data)-8, 4):
-              val = struct.unpack_from('<I', manifest_data, i)[0]
-              if val == 0x00030000:
-                  if i >= 4:
-                      prev = struct.unpack_from('<I', manifest_data, i-4)[0]
-                      if prev == 0x11000008:
-                          print(f"  Patching glEsVersion at offset {i}: 0x00030000 -> 0x00020000")
-                          struct.pack_into('<I', manifest_data, i, 0x00020000)
-                          patched += 1
-          
-          print(f"Patched {patched} occurrence(s)")
-          
-          tmp_apk = apk_path + ".tmp"
-          with zipfile.ZipFile(apk_path, 'r') as zin:
-              with zipfile.ZipFile(tmp_apk, 'w') as zout:
+          for i in range(0, len(manifest)-8, 4):
+              v = struct.unpack_from('<I', manifest, i)[0]
+              if v == 0x00030000 and i >= 4:
+                  p = struct.unpack_from('<I', manifest, i-4)[0]
+                  if p == 0x11000008:
+                      struct.pack_into('<I', manifest, i, 0x00020000)
+                      patched += 1
+                      print(f'Patched offset {i}')
+          print(f'Total: {patched} patches')
+          with zipfile.ZipFile(apk, 'r') as zin:
+              with zipfile.ZipFile(tmp, 'w') as zout:
                   for item in zin.infolist():
                       if item.filename == 'AndroidManifest.xml':
-                          zout.writestr(item, bytes(manifest_data))
+                          zout.writestr(item, bytes(manifest))
                       else:
-                          data = zin.read(item.filename)
-                          zout.writestr(item, data)
-          
-          os.replace(tmp_apk, apk_path)
-          print(f"Done! APK size: {os.path.getsize(apk_path)//1024//1024}MB")
-          PYEOF
+                          zout.writestr(item, zin.read(item.filename))
+          print('Repacked OK')
+          "
+          cp "$TMP_APK" "$APK"
+          echo "Patch complete: $(ls -lh $APK)"
 
-      - name: Re-sign Patched APK
+      - name: Re-sign APK
         run: |
           APK=$(find build/Android -name "*.apk" | head -1)
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.keystore
-          
           sudo apt-get install -y zipalign apksigner 2>/dev/null || true
-          
-          zipalign -f -v -p 4 "$APK" "${APK}.aligned" 2>/dev/null && mv "${APK}.aligned" "$APK" || echo "zipalign skipped"
-          
+          ALIGNED="/tmp/aligned.apk"
+          SIGNED="/tmp/signed.apk"
+          zipalign -f -p 4 "$APK" "$ALIGNED" && echo "Aligned OK" || cp "$APK" "$ALIGNED"
           apksigner sign \
             --ks /tmp/release.keystore \
             --ks-pass "pass:${{ secrets.ANDROID_KEYSTORE_PASS }}" \
             --ks-key-alias "${{ secrets.ANDROID_KEYALIAS_NAME }}" \
             --key-pass "pass:${{ secrets.ANDROID_KEYALIAS_PASS }}" \
-            "$APK" 2>&1 || echo "Re-sign warning (may still work)"
-          
-          echo "Final APK:"
+            --out "$SIGNED" \
+            "$ALIGNED" && echo "Signed OK" || cp "$ALIGNED" "$SIGNED"
+          cp "$SIGNED" "$APK"
+          apksigner verify "$APK" && echo "Verification OK" || echo "Verify warning"
           ls -lh build/Android/
 
       - name: Upload Signed APK Artifact
