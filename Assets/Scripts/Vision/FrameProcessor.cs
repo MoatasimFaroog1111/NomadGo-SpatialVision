@@ -34,7 +34,7 @@ namespace NomadGo.Vision
             inferenceEngine.Initialize(config);
 
             frameSkip = Mathf.Max(0, (int)(30f / 8f) - 1); // ~8fps inference
-            Debug.Log($"[FrameProcessor] Initialized. FrameSkip={frameSkip}, Model={config.modelPath}");
+            Debug.Log($"[FrameProcessor] Initialized. FrameSkip={frameSkip}, Model={config.path}");
         }
 
         public void StartProcessing()
