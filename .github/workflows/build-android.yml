@@ -60,17 +60,31 @@ jobs:
           versioning: Semantic
           allowDirtyBuild: true
 
-      - name: Patch APK glEsVersion for Moto G84 5G
+      - name: Patch and Re-sign APK for Moto G84 5G
         run: |
           APK=$(find build/Android -name "*.apk" | head -1)
-          echo "Patching: $APK"
-          TMP_APK="/tmp/patched.apk"
-          python3 -c "
-          import sys, zipfile, struct, os
-          apk = '$APK'
-          tmp = '$TMP_APK'
+          echo "Source APK: $APK ($(du -sh $APK | cut -f1))"
+          
+          # Decode keystore
+          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.keystore
+          
+          # Install tools
+          sudo apt-get install -y zipalign apksigner 2>/dev/null || true
+          
+          # Step 1: Patch glEsVersion in Manifest (3.0 -> 2.0)
+          python3 << 'PYEOF'
+          import zipfile, struct, os
+          
+          apk = os.environ.get('APK_PATH', '')
+          if not apk:
+              import glob
+              apk = glob.glob('build/Android/*.apk')[0]
+          
+          print(f"Patching: {apk}")
+          
           with zipfile.ZipFile(apk, 'r') as z:
               manifest = bytearray(z.read('AndroidManifest.xml'))
+          
           patched = 0
           for i in range(0, len(manifest)-8, 4):
               v = struct.unpack_from('<I', manifest, i)[0]
@@ -79,38 +93,40 @@ jobs:
                   if p == 0x11000008:
                       struct.pack_into('<I', manifest, i, 0x00020000)
                       patched += 1
-                      print(f'Patched offset {i}')
-          print(f'Total: {patched} patches')
+                      print(f'  Patched glEsVersion at offset {i}')
+          
+          print(f'Total patches: {patched}')
+          
           with zipfile.ZipFile(apk, 'r') as zin:
-              with zipfile.ZipFile(tmp, 'w') as zout:
+              with zipfile.ZipFile('/tmp/patched.apk', 'w') as zout:
                   for item in zin.infolist():
                       if item.filename == 'AndroidManifest.xml':
                           zout.writestr(item, bytes(manifest))
                       else:
                           zout.writestr(item, zin.read(item.filename))
-          print('Repacked OK')
-          "
-          cp "$TMP_APK" "$APK"
-          echo "Patch complete: $(ls -lh $APK)"
-
-      - name: Re-sign APK
-        run: |
-          APK=$(find build/Android -name "*.apk" | head -1)
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.keystore
-          sudo apt-get install -y zipalign apksigner 2>/dev/null || true
-          ALIGNED="/tmp/aligned.apk"
-          SIGNED="/tmp/signed.apk"
-          zipalign -f -p 4 "$APK" "$ALIGNED" && echo "Aligned OK" || cp "$APK" "$ALIGNED"
+          
+          print('Repacked to /tmp/patched.apk')
+          PYEOF
+          
+          # Step 2: Zipalign
+          zipalign -f -p 4 /tmp/patched.apk /tmp/aligned.apk && echo "Aligned OK" || cp /tmp/patched.apk /tmp/aligned.apk
+          
+          # Step 3: Re-sign
           apksigner sign \
             --ks /tmp/release.keystore \
             --ks-pass "pass:${{ secrets.ANDROID_KEYSTORE_PASS }}" \
             --ks-key-alias "${{ secrets.ANDROID_KEYALIAS_NAME }}" \
             --key-pass "pass:${{ secrets.ANDROID_KEYALIAS_PASS }}" \
-            --out "$SIGNED" \
-            "$ALIGNED" && echo "Signed OK" || cp "$ALIGNED" "$SIGNED"
-          cp "$SIGNED" "$APK"
-          apksigner verify "$APK" && echo "Verification OK" || echo "Verify warning"
-          ls -lh build/Android/
+            --out /tmp/final.apk \
+            /tmp/aligned.apk && echo "Signed OK" || cp /tmp/aligned.apk /tmp/final.apk
+          
+          # Step 4: Copy back using sudo
+          sudo cp /tmp/final.apk "$APK"
+          sudo chmod 644 "$APK"
+          
+          # Verify
+          apksigner verify "$APK" && echo "Verification PASSED" || echo "Verify warning"
+          echo "Final: $(ls -lh $APK)"
 
       - name: Upload Signed APK Artifact
         uses: actions/upload-artifact@v4
