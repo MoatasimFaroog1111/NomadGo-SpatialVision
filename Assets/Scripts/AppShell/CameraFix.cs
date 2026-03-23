@@ -1,12 +1,11 @@
 using System.Collections;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace NomadGo.AppShell
 {
     /// <summary>
-    /// Renders the back camera as a full-screen background using OnRenderImage.
-    /// This approach bypasses YUV issues by letting Unity handle the conversion.
+    /// Renders the back camera as a full-screen background using GL.DrawTexture in OnPostRender.
+    /// OnPostRender works even when the scene has no 3D content, unlike OnRenderImage.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class CameraFix : MonoBehaviour
@@ -15,6 +14,8 @@ namespace NomadGo.AppShell
         private WebCamTexture webCamTexture;
         private Material camMat;
         private bool cameraReady = false;
+        private int rotAngle = 0;
+        private bool isMirrored = false;
 
         private void Awake()
         {
@@ -48,6 +49,7 @@ namespace NomadGo.AppShell
             string camName = "";
             foreach (var device in WebCamTexture.devices)
             {
+                Debug.Log($"[CameraFix] Device: {device.name} front={device.isFrontFacing}");
                 if (!device.isFrontFacing)
                 {
                     camName = device.name;
@@ -63,59 +65,86 @@ namespace NomadGo.AppShell
                 yield break;
             }
 
-            Debug.Log($"[CameraFix] Starting: {camName}");
+            Debug.Log($"[CameraFix] Opening: {camName}");
             webCamTexture = new WebCamTexture(camName, 1280, 720, 30);
             webCamTexture.Play();
 
-            // Wait until camera is actually producing frames
+            // Wait until camera is producing frames
             float timeout = 10f;
-            while (webCamTexture.width <= 16 || !webCamTexture.didUpdateThisFrame)
+            while (webCamTexture.width <= 16)
             {
                 timeout -= Time.deltaTime;
                 if (timeout <= 0) { Debug.LogError("[CameraFix] Timeout!"); yield break; }
                 yield return null;
             }
 
-            Debug.Log($"[CameraFix] Camera ready: {webCamTexture.width}x{webCamTexture.height} rot={webCamTexture.videoRotationAngle}");
+            yield return new WaitForSeconds(0.3f);
 
-            // Create material for rendering
-            // Use Unlit/Texture — simplest possible, no color conversion needed
-            // Unity's WebCamTexture already provides RGBA on Android via internal YUV conversion
-            var shader = Shader.Find("Unlit/Texture");
-            if (shader == null) shader = Shader.Find("UI/Default");
+            rotAngle = webCamTexture.videoRotationAngle;
+            isMirrored = webCamTexture.videoVerticallyMirrored;
+            Debug.Log($"[CameraFix] Ready: {webCamTexture.width}x{webCamTexture.height} rot={rotAngle} mirror={isMirrored}");
+
+            // Create material — Hidden/BlitCopy is the most reliable for GL drawing
+            var shader = Shader.Find("Hidden/BlitCopy");
+            if (shader == null || !shader.isSupported) shader = Shader.Find("Unlit/Texture");
+            if (shader == null || !shader.isSupported) shader = Shader.Find("Sprites/Default");
             camMat = new Material(shader);
             camMat.mainTexture = webCamTexture;
 
             cameraReady = true;
         }
 
-        // OnRenderImage is called after the camera renders — we draw the webcam here
-        private void OnRenderImage(RenderTexture src, RenderTexture dest)
+        // OnPostRender is called after the camera renders its view
+        // Unlike OnRenderImage, it IS called even with an empty scene
+        private void OnPostRender()
         {
-            if (!cameraReady || webCamTexture == null || !webCamTexture.isPlaying)
-            {
-                Graphics.Blit(src, dest);
+            if (!cameraReady || webCamTexture == null || !webCamTexture.isPlaying || camMat == null)
                 return;
-            }
-
-            // Build a matrix to handle rotation and mirroring
-            int rotation = webCamTexture.videoRotationAngle;
-            bool mirrored = webCamTexture.videoVerticallyMirrored;
-
-            // Create transform matrix for UV
-            Matrix4x4 uvMat = Matrix4x4.identity;
-
-            // Handle vertical mirror
-            if (mirrored)
-            {
-                // Flip Y: translate to center, scale Y by -1, translate back
-                uvMat = Matrix4x4.TRS(new Vector3(0, 1, 0), Quaternion.identity, new Vector3(1, -1, 1));
-            }
 
             camMat.mainTexture = webCamTexture;
 
-            // Blit webcam texture to screen
-            Graphics.Blit(webCamTexture, dest, camMat);
+            GL.PushMatrix();
+            GL.LoadOrtho();
+
+            camMat.SetPass(0);
+
+            // UV coordinates based on rotation
+            // GL screen: (0,0)=bottom-left, (1,1)=top-right
+            float u0 = 0f, u1 = 1f;
+            float v0 = isMirrored ? 1f : 0f;
+            float v1 = isMirrored ? 0f : 1f;
+
+            GL.Begin(GL.QUADS);
+            if (rotAngle == 0)
+            {
+                GL.TexCoord2(u0, v0); GL.Vertex3(0, 0, 0);
+                GL.TexCoord2(u1, v0); GL.Vertex3(1, 0, 0);
+                GL.TexCoord2(u1, v1); GL.Vertex3(1, 1, 0);
+                GL.TexCoord2(u0, v1); GL.Vertex3(0, 1, 0);
+            }
+            else if (rotAngle == 90)
+            {
+                GL.TexCoord2(u0, v1); GL.Vertex3(0, 0, 0);
+                GL.TexCoord2(u0, v0); GL.Vertex3(1, 0, 0);
+                GL.TexCoord2(u1, v0); GL.Vertex3(1, 1, 0);
+                GL.TexCoord2(u1, v1); GL.Vertex3(0, 1, 0);
+            }
+            else if (rotAngle == 180)
+            {
+                GL.TexCoord2(u1, v1); GL.Vertex3(0, 0, 0);
+                GL.TexCoord2(u0, v1); GL.Vertex3(1, 0, 0);
+                GL.TexCoord2(u0, v0); GL.Vertex3(1, 1, 0);
+                GL.TexCoord2(u1, v0); GL.Vertex3(0, 1, 0);
+            }
+            else // 270
+            {
+                GL.TexCoord2(u1, v0); GL.Vertex3(0, 0, 0);
+                GL.TexCoord2(u1, v1); GL.Vertex3(1, 0, 0);
+                GL.TexCoord2(u0, v1); GL.Vertex3(1, 1, 0);
+                GL.TexCoord2(u0, v0); GL.Vertex3(0, 1, 0);
+            }
+            GL.End();
+            GL.PopMatrix();
         }
 
         private void OnDestroy()
