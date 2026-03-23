@@ -5,18 +5,16 @@ using UnityEngine.UI;
 namespace NomadGo.AppShell
 {
     /// <summary>
-    /// Camera display for Android using Graphics.Blit to fix YUV color issue.
-    /// Renders the back camera correctly on Moto G84 5G.
+    /// Renders the back camera as a full-screen background using OnRenderImage.
+    /// This approach bypasses YUV issues by letting Unity handle the conversion.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class CameraFix : MonoBehaviour
     {
         private Camera cam;
         private WebCamTexture webCamTexture;
-        private RenderTexture renderTex;
-        private RawImage bgImage;
-        private GameObject bgCanvas;
-        private Material blitMat;
+        private Material camMat;
+        private bool cameraReady = false;
 
         private void Awake()
         {
@@ -50,148 +48,88 @@ namespace NomadGo.AppShell
             string camName = "";
             foreach (var device in WebCamTexture.devices)
             {
-                Debug.Log($"[CameraFix] Device: {device.name}, front: {device.isFrontFacing}");
                 if (!device.isFrontFacing)
                 {
                     camName = device.name;
                     break;
                 }
             }
-
             if (string.IsNullOrEmpty(camName) && WebCamTexture.devices.Length > 0)
                 camName = WebCamTexture.devices[0].name;
 
             if (string.IsNullOrEmpty(camName))
             {
-                Debug.LogError("[CameraFix] No camera found!");
+                Debug.LogError("[CameraFix] No camera device found!");
                 yield break;
             }
 
-            Debug.Log($"[CameraFix] Starting camera: {camName}");
-            webCamTexture = new WebCamTexture(camName, 1920, 1080, 30);
+            Debug.Log($"[CameraFix] Starting: {camName}");
+            webCamTexture = new WebCamTexture(camName, 1280, 720, 30);
             webCamTexture.Play();
 
-            // Wait for camera to produce valid frames
-            float timeout = 8f;
-            while (webCamTexture.width <= 16)
+            // Wait until camera is actually producing frames
+            float timeout = 10f;
+            while (webCamTexture.width <= 16 || !webCamTexture.didUpdateThisFrame)
             {
                 timeout -= Time.deltaTime;
-                if (timeout <= 0)
-                {
-                    Debug.LogError("[CameraFix] Camera timed out!");
-                    yield break;
-                }
+                if (timeout <= 0) { Debug.LogError("[CameraFix] Timeout!"); yield break; }
                 yield return null;
             }
 
-            // Extra wait for first real frame
-            yield return new WaitForSeconds(0.5f);
+            Debug.Log($"[CameraFix] Camera ready: {webCamTexture.width}x{webCamTexture.height} rot={webCamTexture.videoRotationAngle}");
 
-            Debug.Log($"[CameraFix] Camera OK: {webCamTexture.width}x{webCamTexture.height}, rot={webCamTexture.videoRotationAngle}, mirror={webCamTexture.videoVerticallyMirrored}");
+            // Create material for rendering
+            // Use Unlit/Texture — simplest possible, no color conversion needed
+            // Unity's WebCamTexture already provides RGBA on Android via internal YUV conversion
+            var shader = Shader.Find("Unlit/Texture");
+            if (shader == null) shader = Shader.Find("UI/Default");
+            camMat = new Material(shader);
+            camMat.mainTexture = webCamTexture;
 
-            // Create RenderTexture to blit into (fixes YUV format)
-            renderTex = new RenderTexture(webCamTexture.width, webCamTexture.height, 0, RenderTextureFormat.ARGB32);
-            renderTex.Create();
-
-            // Create blit material
-            blitMat = new Material(Shader.Find("NomadGo/CameraYUV"));
-            if (blitMat == null || blitMat.shader == null || !blitMat.shader.isSupported)
-            {
-                Debug.LogWarning("[CameraFix] Custom shader not found, using Unlit/Texture");
-                blitMat = new Material(Shader.Find("Unlit/Texture"));
-            }
-
-            // Blit WebCamTexture → RenderTexture (converts YUV to RGB)
-            bool mirrored = webCamTexture.videoVerticallyMirrored;
-            blitMat.SetFloat("_FlipY", mirrored ? 1f : 0f);
-            Graphics.Blit(webCamTexture, renderTex, blitMat);
-
-            CreateBackground();
+            cameraReady = true;
         }
 
-        private void CreateBackground()
+        // OnRenderImage is called after the camera renders — we draw the webcam here
+        private void OnRenderImage(RenderTexture src, RenderTexture dest)
         {
-            bgCanvas = new GameObject("CamBG_Canvas");
-            DontDestroyOnLoad(bgCanvas);
+            if (!cameraReady || webCamTexture == null || !webCamTexture.isPlaying)
+            {
+                Graphics.Blit(src, dest);
+                return;
+            }
 
-            var canvas = bgCanvas.AddComponent<Canvas>();
-            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = -200;
-
-            var scaler = bgCanvas.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
-
-            bgCanvas.AddComponent<GraphicRaycaster>();
-
-            var imgGO = new GameObject("CamBG_Image");
-            imgGO.transform.SetParent(bgCanvas.transform, false);
-
-            bgImage = imgGO.AddComponent<RawImage>();
-            bgImage.texture = renderTex;  // Use RenderTexture (RGB, not YUV)
-            bgImage.color = Color.white;
-
-            var rect = imgGO.GetComponent<RectTransform>();
-            rect.anchorMin = Vector2.zero;
-            rect.anchorMax = Vector2.one;
-            rect.offsetMin = Vector2.zero;
-            rect.offsetMax = Vector2.zero;
-            rect.localScale = Vector3.one;
-            rect.localEulerAngles = Vector3.zero;
-
-            // Apply rotation
+            // Build a matrix to handle rotation and mirroring
             int rotation = webCamTexture.videoRotationAngle;
-            rect.localEulerAngles = new Vector3(0, 0, -rotation);
+            bool mirrored = webCamTexture.videoVerticallyMirrored;
 
-            // Fix scale for rotated image
-            if (rotation == 90 || rotation == 270)
+            // Create transform matrix for UV
+            Matrix4x4 uvMat = Matrix4x4.identity;
+
+            // Handle vertical mirror
+            if (mirrored)
             {
-                float sw = Screen.width;
-                float sh = Screen.height;
-                float camW = webCamTexture.width;
-                float camH = webCamTexture.height;
-                float scale = Mathf.Max(sw / camH, sh / camW);
-                rect.localScale = new Vector3(scale, scale, 1f);
+                // Flip Y: translate to center, scale Y by -1, translate back
+                uvMat = Matrix4x4.TRS(new Vector3(0, 1, 0), Quaternion.identity, new Vector3(1, -1, 1));
             }
 
-            Debug.Log("[CameraFix] Background created with RenderTexture!");
-        }
+            camMat.mainTexture = webCamTexture;
 
-        private void Update()
-        {
-            // Keep blitting every frame to update the display
-            if (webCamTexture != null && webCamTexture.didUpdateThisFrame && renderTex != null && blitMat != null)
-            {
-                blitMat.SetFloat("_FlipY", webCamTexture.videoVerticallyMirrored ? 1f : 0f);
-                Graphics.Blit(webCamTexture, renderTex, blitMat);
-            }
-
-            if (cam != null)
-            {
-                cam.clearFlags = CameraClearFlags.SolidColor;
-                cam.backgroundColor = Color.black;
-            }
+            // Blit webcam texture to screen
+            Graphics.Blit(webCamTexture, dest, camMat);
         }
 
         private void OnDestroy()
         {
+            cameraReady = false;
             if (webCamTexture != null)
             {
                 webCamTexture.Stop();
                 webCamTexture = null;
             }
-            if (renderTex != null)
+            if (camMat != null)
             {
-                renderTex.Release();
-                renderTex = null;
-            }
-            if (blitMat != null)
-            {
-                Destroy(blitMat);
-                blitMat = null;
-            }
-            if (bgCanvas != null)
-            {
-                Destroy(bgCanvas);
+                Destroy(camMat);
+                camMat = null;
             }
         }
     }
