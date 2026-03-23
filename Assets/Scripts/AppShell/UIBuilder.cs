@@ -6,12 +6,12 @@ using TMPro;
 namespace NomadGo.AppShell
 {
     /// <summary>
-    /// Builds the entire UI at runtime — buttons, status text, etc.
-    /// This avoids Unity Scene YAML complexity and ensures UI always works.
+    /// Builds the entire UI at runtime.
+    /// Buttons: Start Scan (green), Stop Scan (red), Export (blue).
+    /// Status bar at top with semi-transparent background.
     /// </summary>
     public class UIBuilder : MonoBehaviour
     {
-        private Canvas canvas;
         private Button startBtn;
         private Button stopBtn;
         private Button exportBtn;
@@ -21,25 +21,15 @@ namespace NomadGo.AppShell
         private void Start()
         {
             BuildUI();
-            // Auto-start scan after 2 seconds (camera should be ready by then)
-            StartCoroutine(AutoStartScan());
-        }
-
-        private IEnumerator AutoStartScan()
-        {
-            yield return new WaitForSeconds(3f);
-            if (!isScanning)
-            {
-                Debug.Log("[UIBuilder] Auto-starting scan...");
-                OnStartScan();
-            }
         }
 
         private void BuildUI()
         {
-            // Create Canvas
+            // ── Canvas ──────────────────────────────────────────────────────────
             var canvasGO = new GameObject("UICanvas");
-            canvas = canvasGO.AddComponent<Canvas>();
+            DontDestroyOnLoad(canvasGO);
+
+            var canvas = canvasGO.AddComponent<Canvas>();
             canvas.renderMode = RenderMode.ScreenSpaceOverlay;
             canvas.sortingOrder = 100;
 
@@ -50,7 +40,7 @@ namespace NomadGo.AppShell
 
             canvasGO.AddComponent<GraphicRaycaster>();
 
-            // Create EventSystem if not exists
+            // ── EventSystem ──────────────────────────────────────────────────────
             if (FindObjectOfType<UnityEngine.EventSystems.EventSystem>() == null)
             {
                 var esGO = new GameObject("EventSystem");
@@ -58,58 +48,89 @@ namespace NomadGo.AppShell
                 esGO.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
             }
 
-            // Status text at top
-            statusTxt = CreateText(canvasGO.transform, "StatusText", "Ready - Tap Start Scan",
-                new Vector2(0f, 1f), new Vector2(1f, 1f),
-                new Vector2(0f, -50f), new Vector2(0f, 80f), 28);
+            var root = canvasGO.transform;
 
-            // Start Scan button (green, bottom center)
-            startBtn = CreateButton(canvasGO.transform, "StartScanBtn", "▶ Start Scan",
-                new Color(0.1f, 0.7f, 0.1f),
-                new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                new Vector2(0f, 100f), new Vector2(420f, 110f));
+            // ── Status bar (top, semi-transparent dark background) ───────────────
+            var statusGO = new GameObject("StatusBar");
+            statusGO.transform.SetParent(root, false);
+            var statusRT = statusGO.AddComponent<RectTransform>();
+            statusRT.anchorMin = new Vector2(0, 1);
+            statusRT.anchorMax = new Vector2(1, 1);
+            statusRT.pivot = new Vector2(0.5f, 1f);
+            statusRT.anchoredPosition = new Vector2(0, 0);
+            statusRT.sizeDelta = new Vector2(0, 70);
+
+            var statusBg = statusGO.AddComponent<Image>();
+            statusBg.color = new Color(0, 0, 0, 0.55f);
+            statusBg.raycastTarget = false;
+
+            statusTxt = statusGO.AddComponent<TextMeshProUGUI>();
+            statusTxt.text = "NomadGo Ready";
+            statusTxt.fontSize = 26;
+            statusTxt.color = Color.white;
+            statusTxt.alignment = TextAlignmentOptions.Center;
+            statusTxt.raycastTarget = false;
+
+            // ── Start Scan button (bottom center, green) ─────────────────────────
+            startBtn = MakeButton(root, "StartScanBtn", "▶  Start Scan",
+                new Color32(20, 160, 20, 220),
+                anchorMin: new Vector2(0.1f, 0f),
+                anchorMax: new Vector2(0.9f, 0f),
+                anchoredPos: new Vector2(0, 80),
+                size: new Vector2(0, 110));
             startBtn.onClick.AddListener(OnStartScan);
 
-            // Stop Scan button (red, bottom center) - hidden initially
-            stopBtn = CreateButton(canvasGO.transform, "StopScanBtn", "■ Stop Scan",
-                new Color(0.8f, 0.1f, 0.1f),
-                new Vector2(0.5f, 0f), new Vector2(0.5f, 0f),
-                new Vector2(0f, 100f), new Vector2(420f, 110f));
+            // ── Stop Scan button (same position, red) — hidden initially ─────────
+            stopBtn = MakeButton(root, "StopScanBtn", "■  Stop Scan",
+                new Color32(200, 30, 30, 220),
+                anchorMin: new Vector2(0.1f, 0f),
+                anchorMax: new Vector2(0.9f, 0f),
+                anchoredPos: new Vector2(0, 80),
+                size: new Vector2(0, 110));
             stopBtn.onClick.AddListener(OnStopScan);
             stopBtn.gameObject.SetActive(false);
 
-            // Export button (blue, bottom right)
-            exportBtn = CreateButton(canvasGO.transform, "ExportBtn", "Export",
-                new Color(0.1f, 0.3f, 0.8f),
-                new Vector2(1f, 0f), new Vector2(1f, 0f),
-                new Vector2(-110f, 100f), new Vector2(200f, 80f));
+            // ── Export button (bottom right, blue) ──────────────────────────────
+            exportBtn = MakeButton(root, "ExportBtn", "Export",
+                new Color32(30, 80, 200, 220),
+                anchorMin: new Vector2(0.65f, 0f),
+                anchorMax: new Vector2(0.95f, 0f),
+                anchoredPos: new Vector2(0, 210),
+                size: new Vector2(0, 80));
             exportBtn.onClick.AddListener(OnExport);
 
             Debug.Log("[UIBuilder] UI built successfully.");
         }
 
+        // ── Button callbacks ─────────────────────────────────────────────────────
+
         private void OnStartScan()
         {
-            if (AppManager.Instance != null)
-            {
-                AppManager.Instance.StartScan();
-                Debug.Log("[UIBuilder] Scan started.");
-            }
-            else
-            {
-                Debug.LogWarning("[UIBuilder] AppManager not found, starting scan manually...");
-                var fp = FindObjectOfType<Vision.FrameProcessor>();
-                if (fp != null) fp.StartProcessing();
-            }
-
             isScanning = true;
             startBtn.gameObject.SetActive(false);
             stopBtn.gameObject.SetActive(true);
             SetStatus("Scanning... (YOLO active)");
+
+            if (AppManager.Instance != null)
+            {
+                AppManager.Instance.StartScan();
+            }
+            else
+            {
+                // Fallback: find FrameProcessor directly
+                var fp = FindObjectOfType<Vision.FrameProcessor>();
+                if (fp != null) fp.StartProcessing();
+                else Debug.LogWarning("[UIBuilder] FrameProcessor not found.");
+            }
         }
 
         private void OnStopScan()
         {
+            isScanning = false;
+            startBtn.gameObject.SetActive(true);
+            stopBtn.gameObject.SetActive(false);
+            SetStatus("Scan stopped.");
+
             if (AppManager.Instance != null)
                 AppManager.Instance.StopScan();
             else
@@ -117,11 +138,6 @@ namespace NomadGo.AppShell
                 var fp = FindObjectOfType<Vision.FrameProcessor>();
                 if (fp != null) fp.StopProcessing();
             }
-
-            isScanning = false;
-            startBtn.gameObject.SetActive(true);
-            stopBtn.gameObject.SetActive(false);
-            SetStatus("Scan stopped.");
         }
 
         private void OnExport()
@@ -130,24 +146,23 @@ namespace NomadGo.AppShell
             if (storage != null)
             {
                 string path = storage.ExportCurrentSession();
-                SetStatus($"Exported: {path}");
+                SetStatus($"Exported: {System.IO.Path.GetFileName(path)}");
             }
             else
             {
-                SetStatus("No session to export.");
+                SetStatus("No session data to export.");
             }
         }
 
         private void SetStatus(string msg)
         {
-            if (statusTxt != null)
-                statusTxt.text = msg;
+            if (statusTxt != null) statusTxt.text = msg;
         }
 
-        // ─── Helpers ────────────────────────────────────────────────────────────
+        // ── Helper ───────────────────────────────────────────────────────────────
 
-        private Button CreateButton(Transform parent, string name, string label, Color color,
-            Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPos, Vector2 sizeDelta)
+        private Button MakeButton(Transform parent, string name, string label, Color32 color,
+            Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPos, Vector2 size)
         {
             var go = new GameObject(name);
             go.transform.SetParent(parent, false);
@@ -155,62 +170,42 @@ namespace NomadGo.AppShell
             var rt = go.AddComponent<RectTransform>();
             rt.anchorMin = anchorMin;
             rt.anchorMax = anchorMax;
+            rt.pivot = new Vector2(0.5f, 0f);
             rt.anchoredPosition = anchoredPos;
-            rt.sizeDelta = sizeDelta;
+            rt.sizeDelta = size;
 
             var img = go.AddComponent<Image>();
             img.color = color;
 
+            // Rounded look via sprite (optional — works without)
             var btn = go.AddComponent<Button>();
-            var colors = btn.colors;
-            colors.normalColor = color;
-            colors.highlightedColor = color * 1.2f;
-            colors.pressedColor = color * 0.7f;
-            btn.colors = colors;
+            var cols = btn.colors;
+            cols.normalColor = color;
+            Color hc = color; hc.r = Mathf.Min(1f, color.r + 0.15f); hc.g = Mathf.Min(1f, color.g + 0.15f); hc.b = Mathf.Min(1f, color.b + 0.15f);
+            cols.highlightedColor = hc;
+            Color pc = color; pc.r *= 0.7f; pc.g *= 0.7f; pc.b *= 0.7f;
+            cols.pressedColor = pc;
+            btn.colors = cols;
             btn.targetGraphic = img;
 
             // Label
-            var txtGO = new GameObject("Label");
-            txtGO.transform.SetParent(go.transform, false);
-            var txtRT = txtGO.AddComponent<RectTransform>();
-            txtRT.anchorMin = Vector2.zero;
-            txtRT.anchorMax = Vector2.one;
-            txtRT.offsetMin = Vector2.zero;
-            txtRT.offsetMax = Vector2.zero;
+            var lblGO = new GameObject("Label");
+            lblGO.transform.SetParent(go.transform, false);
+            var lblRT = lblGO.AddComponent<RectTransform>();
+            lblRT.anchorMin = Vector2.zero;
+            lblRT.anchorMax = Vector2.one;
+            lblRT.offsetMin = Vector2.zero;
+            lblRT.offsetMax = Vector2.zero;
 
-            var tmp = txtGO.AddComponent<TextMeshProUGUI>();
+            var tmp = lblGO.AddComponent<TextMeshProUGUI>();
             tmp.text = label;
-            tmp.fontSize = 38;
+            tmp.fontSize = 40;
             tmp.color = Color.white;
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.fontStyle = FontStyles.Bold;
+            tmp.raycastTarget = false;
 
             return btn;
-        }
-
-        private TextMeshProUGUI CreateText(Transform parent, string name, string content,
-            Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPos, Vector2 sizeDelta, float fontSize)
-        {
-            var go = new GameObject(name);
-            go.transform.SetParent(parent, false);
-
-            var rt = go.AddComponent<RectTransform>();
-            rt.anchorMin = anchorMin;
-            rt.anchorMax = anchorMax;
-            rt.anchoredPosition = anchoredPos;
-            rt.sizeDelta = sizeDelta;
-
-            // Background
-            var img = go.AddComponent<Image>();
-            img.color = new Color(0, 0, 0, 0.6f);
-
-            var tmp = go.AddComponent<TextMeshProUGUI>();
-            tmp.text = content;
-            tmp.fontSize = fontSize;
-            tmp.color = Color.white;
-            tmp.alignment = TextAlignmentOptions.Center;
-
-            return tmp;
         }
     }
 }

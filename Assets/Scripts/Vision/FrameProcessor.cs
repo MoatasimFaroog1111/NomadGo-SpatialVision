@@ -1,17 +1,20 @@
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityEngine.XR.ARFoundation;
-using UnityEngine.XR.ARSubsystems;
 
 namespace NomadGo.Vision
 {
+    /// <summary>
+    /// Processes camera frames using WebCamTexture (via CameraFix) and runs YOLO inference.
+    /// Does NOT use ARFoundation/ARCameraManager — uses WebCamTexture directly for compatibility.
+    /// </summary>
     public class FrameProcessor : MonoBehaviour
     {
-        [SerializeField] private ARCameraManager cameraManager;
-        [SerializeField] private ONNXInferenceEngine inferenceEngine;
+        private ONNXInferenceEngine inferenceEngine;
+        private AppShell.CameraFix cameraFix;
 
         private bool isProcessing = false;
-        private int frameSkip = 0;
+        private int frameSkip = 3; // Process every 4th frame (~7.5fps inference at 30fps)
         private int frameCounter = 0;
         private List<DetectionResult> latestDetections = new List<DetectionResult>();
 
@@ -30,100 +33,96 @@ namespace NomadGo.Vision
             }
             inferenceEngine.Initialize(config);
 
-            frameSkip = Mathf.Max(0, (int)(60f / 15f) - 1);
-            Debug.Log($"[FrameProcessor] Initialized. Frame skip: {frameSkip}");
+            frameSkip = Mathf.Max(0, (int)(30f / 8f) - 1); // ~8fps inference
+            Debug.Log($"[FrameProcessor] Initialized. FrameSkip={frameSkip}, Model={config.modelPath}");
         }
 
         public void StartProcessing()
         {
             if (inferenceEngine == null || !inferenceEngine.IsLoaded)
             {
-                Debug.LogError("[FrameProcessor] Cannot start — inference engine not ready.");
+                Debug.LogError("[FrameProcessor] Cannot start — inference engine not loaded.");
+                return;
+            }
+
+            // Find CameraFix
+            cameraFix = FindObjectOfType<AppShell.CameraFix>();
+            if (cameraFix == null)
+            {
+                Debug.LogError("[FrameProcessor] CameraFix not found!");
                 return;
             }
 
             isProcessing = true;
             frameCounter = 0;
-
-            if (cameraManager != null)
-            {
-                cameraManager.frameReceived += OnCameraFrameReceived;
-            }
-
-            Debug.Log("[FrameProcessor] Processing started.");
+            Debug.Log("[FrameProcessor] Processing started (WebCamTexture mode).");
         }
 
         public void StopProcessing()
         {
             isProcessing = false;
-
-            if (cameraManager != null)
-            {
-                cameraManager.frameReceived -= OnCameraFrameReceived;
-            }
-
             Debug.Log("[FrameProcessor] Processing stopped.");
         }
 
-        private void OnCameraFrameReceived(ARCameraFrameEventArgs args)
+        private void Update()
         {
             if (!isProcessing) return;
+            if (cameraFix == null || !cameraFix.IsReady) return;
+
+            var webCam = cameraFix.CameraTexture;
+            if (webCam == null || !webCam.isPlaying || !webCam.didUpdateThisFrame) return;
 
             frameCounter++;
             if (frameCounter % (frameSkip + 1) != 0) return;
 
-            if (!cameraManager.TryAcquireLatestCpuImage(out XRCpuImage cpuImage))
-            {
-                return;
-            }
+            // Convert WebCamTexture to Texture2D for YOLO
+            var tex = ConvertWebCamToTexture(webCam);
+            if (tex == null) return;
 
-            Texture2D texture = ConvertCpuImageToTexture(cpuImage);
-            cpuImage.Dispose();
-
-            if (texture == null) return;
-
-            ProcessFrame(texture);
-            Destroy(texture);
+            ProcessFrame(tex);
+            Destroy(tex);
         }
 
-        private Texture2D ConvertCpuImageToTexture(XRCpuImage cpuImage)
+        private Texture2D ConvertWebCamToTexture(WebCamTexture webCam)
         {
-            var conversionParams = new XRCpuImage.ConversionParams
+            try
             {
-                inputRect = new RectInt(0, 0, cpuImage.width, cpuImage.height),
-                outputDimensions = new Vector2Int(cpuImage.width, cpuImage.height),
-                outputFormat = TextureFormat.RGBA32,
-                transformation = XRCpuImage.Transformation.None
-            };
+                // Resize to model input size (640x640 for YOLOv8)
+                int targetW = 640;
+                int targetH = 640;
 
-            int size = cpuImage.GetConvertedDataSize(conversionParams);
-            var buffer = new Unity.Collections.NativeArray<byte>(size, Unity.Collections.Allocator.Temp);
+                // Create RenderTexture for resize
+                var rt = RenderTexture.GetTemporary(targetW, targetH, 0, RenderTextureFormat.ARGB32);
+                Graphics.Blit(webCam, rt);
 
-            cpuImage.Convert(conversionParams, buffer);
+                var prev = RenderTexture.active;
+                RenderTexture.active = rt;
 
-            Texture2D texture = new Texture2D(
-                conversionParams.outputDimensions.x,
-                conversionParams.outputDimensions.y,
-                conversionParams.outputFormat,
-                false
-            );
-            texture.LoadRawTextureData(buffer);
-            texture.Apply();
+                var tex = new Texture2D(targetW, targetH, TextureFormat.RGB24, false);
+                tex.ReadPixels(new Rect(0, 0, targetW, targetH), 0, 0);
+                tex.Apply();
 
-            buffer.Dispose();
-            return texture;
+                RenderTexture.active = prev;
+                RenderTexture.ReleaseTemporary(rt);
+
+                return tex;
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogError($"[FrameProcessor] Frame conversion error: {e.Message}");
+                return null;
+            }
         }
 
         private void ProcessFrame(Texture2D frame)
         {
-            List<DetectionResult> detections = inferenceEngine.RunInference(frame);
-
+            var detections = inferenceEngine.RunInference(frame);
             latestDetections = detections;
             OnDetectionsUpdated?.Invoke(detections);
 
             if (detections.Count > 0)
             {
-                Debug.Log($"[FrameProcessor] Frame processed: {detections.Count} detections, {inferenceEngine.LastInferenceTimeMs:F1}ms");
+                Debug.Log($"[FrameProcessor] {detections.Count} detections, {inferenceEngine.LastInferenceTimeMs:F1}ms");
             }
         }
 
