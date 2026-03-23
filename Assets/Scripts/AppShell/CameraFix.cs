@@ -5,17 +5,18 @@ using UnityEngine.UI;
 namespace NomadGo.AppShell
 {
     /// <summary>
-    /// Camera display fix for Android.
-    /// Renders WebCamTexture via a Blit shader to fix YUV color and orientation.
+    /// Camera display for Android using Graphics.Blit to fix YUV color issue.
+    /// Renders the back camera correctly on Moto G84 5G.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class CameraFix : MonoBehaviour
     {
         private Camera cam;
         private WebCamTexture webCamTexture;
-        private Texture2D displayTexture;
+        private RenderTexture renderTex;
         private RawImage bgImage;
         private GameObject bgCanvas;
+        private Material blitMat;
 
         private void Awake()
         {
@@ -67,12 +68,12 @@ namespace NomadGo.AppShell
             }
 
             Debug.Log($"[CameraFix] Starting camera: {camName}");
-            webCamTexture = new WebCamTexture(camName, Screen.width, Screen.height, 30);
+            webCamTexture = new WebCamTexture(camName, 1920, 1080, 30);
             webCamTexture.Play();
 
             // Wait for camera to produce valid frames
-            float timeout = 6f;
-            while (!webCamTexture.didUpdateThisFrame || webCamTexture.width <= 16)
+            float timeout = 8f;
+            while (webCamTexture.width <= 16)
             {
                 timeout -= Time.deltaTime;
                 if (timeout <= 0)
@@ -83,14 +84,33 @@ namespace NomadGo.AppShell
                 yield return null;
             }
 
+            // Extra wait for first real frame
+            yield return new WaitForSeconds(0.5f);
+
             Debug.Log($"[CameraFix] Camera OK: {webCamTexture.width}x{webCamTexture.height}, rot={webCamTexture.videoRotationAngle}, mirror={webCamTexture.videoVerticallyMirrored}");
+
+            // Create RenderTexture to blit into (fixes YUV format)
+            renderTex = new RenderTexture(webCamTexture.width, webCamTexture.height, 0, RenderTextureFormat.ARGB32);
+            renderTex.Create();
+
+            // Create blit material
+            blitMat = new Material(Shader.Find("NomadGo/CameraYUV"));
+            if (blitMat == null || blitMat.shader == null || !blitMat.shader.isSupported)
+            {
+                Debug.LogWarning("[CameraFix] Custom shader not found, using Unlit/Texture");
+                blitMat = new Material(Shader.Find("Unlit/Texture"));
+            }
+
+            // Blit WebCamTexture → RenderTexture (converts YUV to RGB)
+            bool mirrored = webCamTexture.videoVerticallyMirrored;
+            blitMat.SetFloat("_FlipY", mirrored ? 1f : 0f);
+            Graphics.Blit(webCamTexture, renderTex, blitMat);
 
             CreateBackground();
         }
 
         private void CreateBackground()
         {
-            // ScreenSpaceOverlay canvas — always on top, no camera dependency
             bgCanvas = new GameObject("CamBG_Canvas");
             DontDestroyOnLoad(bgCanvas);
 
@@ -99,17 +119,15 @@ namespace NomadGo.AppShell
             canvas.sortingOrder = -200;
 
             var scaler = bgCanvas.AddComponent<CanvasScaler>();
-            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-            scaler.referenceResolution = new Vector2(Screen.width, Screen.height);
-            scaler.matchWidthOrHeight = 0.5f;
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ConstantPixelSize;
 
             bgCanvas.AddComponent<GraphicRaycaster>();
 
-            // Full-screen RawImage
             var imgGO = new GameObject("CamBG_Image");
             imgGO.transform.SetParent(bgCanvas.transform, false);
 
             bgImage = imgGO.AddComponent<RawImage>();
+            bgImage.texture = renderTex;  // Use RenderTexture (RGB, not YUV)
             bgImage.color = Color.white;
 
             var rect = imgGO.GetComponent<RectTransform>();
@@ -118,61 +136,35 @@ namespace NomadGo.AppShell
             rect.offsetMin = Vector2.zero;
             rect.offsetMax = Vector2.zero;
             rect.localScale = Vector3.one;
+            rect.localEulerAngles = Vector3.zero;
 
-            // Assign texture and fix orientation
-            ApplyTexture();
-
-            Debug.Log("[CameraFix] Camera background created!");
-        }
-
-        private void ApplyTexture()
-        {
-            if (bgImage == null || webCamTexture == null) return;
-
+            // Apply rotation
             int rotation = webCamTexture.videoRotationAngle;
-            bool mirrored = webCamTexture.videoVerticallyMirrored;
+            rect.localEulerAngles = new Vector3(0, 0, -rotation);
 
-            Debug.Log($"[CameraFix] Applying texture: rot={rotation}, mirrored={mirrored}");
-
-            // Assign the WebCamTexture directly — Unity handles YUV conversion
-            bgImage.texture = webCamTexture;
-
-            // Reset transform
-            bgImage.rectTransform.localEulerAngles = Vector3.zero;
-            bgImage.rectTransform.localScale = Vector3.one;
-
-            // Fix UV for mirror
-            float uvY = mirrored ? 1f : 0f;
-            float uvH = mirrored ? -1f : 1f;
-            bgImage.uvRect = new Rect(0f, uvY, 1f, uvH);
-
-            // Apply rotation — rotate the RectTransform
-            bgImage.rectTransform.localEulerAngles = new Vector3(0, 0, -rotation);
-
-            // When rotated 90/270, swap width/height to fill screen properly
+            // Fix scale for rotated image
             if (rotation == 90 || rotation == 270)
             {
                 float sw = Screen.width;
                 float sh = Screen.height;
                 float camW = webCamTexture.width;
                 float camH = webCamTexture.height;
-
-                // Scale so the rotated image fills the screen
-                float scaleX = sh / camW;
-                float scaleY = sw / camH;
-                float scale = Mathf.Max(scaleX, scaleY);
-
-                bgImage.rectTransform.localScale = new Vector3(scale, scale, 1f);
+                float scale = Mathf.Max(sw / camH, sh / camW);
+                rect.localScale = new Vector3(scale, scale, 1f);
             }
-            else
-            {
-                // For 0/180 rotation, just fill normally
-                bgImage.rectTransform.localScale = Vector3.one;
-            }
+
+            Debug.Log("[CameraFix] Background created with RenderTexture!");
         }
 
         private void Update()
         {
+            // Keep blitting every frame to update the display
+            if (webCamTexture != null && webCamTexture.didUpdateThisFrame && renderTex != null && blitMat != null)
+            {
+                blitMat.SetFloat("_FlipY", webCamTexture.videoVerticallyMirrored ? 1f : 0f);
+                Graphics.Blit(webCamTexture, renderTex, blitMat);
+            }
+
             if (cam != null)
             {
                 cam.clearFlags = CameraClearFlags.SolidColor;
@@ -186,6 +178,16 @@ namespace NomadGo.AppShell
             {
                 webCamTexture.Stop();
                 webCamTexture = null;
+            }
+            if (renderTex != null)
+            {
+                renderTex.Release();
+                renderTex = null;
+            }
+            if (blitMat != null)
+            {
+                Destroy(blitMat);
+                blitMat = null;
             }
             if (bgCanvas != null)
             {
