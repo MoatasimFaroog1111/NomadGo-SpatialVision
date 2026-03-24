@@ -4,45 +4,51 @@ using UnityEngine;
 namespace NomadGo.AppShell
 {
     /// <summary>
-    /// RESTORED v5: Back to OnPostRender + GL approach (was working in first screenshot).
+    /// CameraFix v7 — Black-screen + flip fixes for Moto G84 5G (Android 15, Vulkan)
     ///
-    /// Root cause of all PINK screen issues:
-    /// - RawImage/Canvas uses UI/Default shader which CANNOT sample GL_TEXTURE_EXTERNAL_OES (Android WebCamTexture)
-    /// - GL.DrawTexture in OnPostRender CAN handle OES texture because Unity sets up the correct GL state
+    /// Black screen root cause: cam.depth=-10 meant our OnPostRender GL drawing happened
+    /// BEFORE other cameras (AR camera, depth=0) which then cleared the screen to black.
+    /// Fix: cam.depth=100 → we render LAST, nothing can overwrite our camera feed.
+    /// All other cameras are disabled so nothing clears our output.
     ///
-    /// Two-step approach for reliability:
-    ///   1. Graphics.Blit(webCamTexture → tempRT): converts OES → regular ARGB32 RenderTexture
-    ///   2. OnPostRender + GL quads with tempRT: draws to screen with correct rotation UVs
+    /// Camera flip root cause: On Vulkan (Android 15 default), Graphics.Blit writes
+    /// the RenderTexture with Y=0 at TOP, while GL.TexCoord2 addresses with Y=0 at
+    /// BOTTOM. This inverts the V axis. Fix: detect SystemInfo.graphicsUVStartsAtTop
+    /// and swap v0/v1 in all UV mappings.
     ///
-    /// This eliminates the OES sampling issue completely while using the proven OnPostRender approach.
+    /// Two-step render:
+    ///   1. Update(): Graphics.Blit(webCamTexture → blitRT)  — converts OES → ARGB32
+    ///   2. OnPostRender(): GL quads with correct rotation + V-flip UVs
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class CameraFix : MonoBehaviour
     {
-        private Camera cam;
+        private Camera       cam;
         private WebCamTexture webCamTexture;
-        private RenderTexture blitRT;   // intermediate: OES → ARGB32
-        private Material drawMat;
-        private bool cameraReady = false;
-        private int rotAngle = 0;
-        private bool isMirrored = false;
+        private RenderTexture blitRT;
+        private Material      drawMat;
+        private bool          cameraReady = false;
+        private int           rotAngle    = 0;
+        private bool          isMirrored  = false;
+        private bool          invertV     = false; // true on Vulkan (graphicsUVStartsAtTop)
 
         public WebCamTexture CameraTexture => webCamTexture;
-        public bool IsReady => cameraReady;
+        public bool          IsReady       => cameraReady;
 
         private void Awake()
         {
             cam = GetComponent<Camera>();
             if (cam != null)
             {
-                cam.clearFlags = CameraClearFlags.SolidColor;
+                cam.clearFlags    = CameraClearFlags.SolidColor;
                 cam.backgroundColor = Color.black;
-                cam.allowHDR = false;
-                cam.allowMSAA = false;
-                cam.depth = -10;
+                cam.allowHDR      = false;
+                cam.allowMSAA     = false;
+                // depth=100: render LAST so AR/main cameras cannot overwrite our feed
+                cam.depth         = 100;
             }
 
-            // Disable ARCameraBackground (causes magenta if ARFoundation not set up)
+            // Disable ARCameraBackground (magenta on OpenGL ES)
             foreach (var mb in FindObjectsOfType<MonoBehaviour>())
             {
                 if (mb != null && mb.GetType().Name == "ARCameraBackground")
@@ -50,6 +56,14 @@ namespace NomadGo.AppShell
                     mb.enabled = false;
                     Debug.Log($"[CameraFix] Disabled ARCameraBackground on {mb.gameObject.name}");
                 }
+            }
+
+            // Disable ALL other cameras so they cannot clear our camera feed
+            foreach (var c in FindObjectsOfType<Camera>())
+            {
+                if (c == cam) continue;
+                c.enabled = false;
+                Debug.Log($"[CameraFix] Disabled camera: {c.gameObject.name} (was depth={c.depth})");
             }
         }
 
@@ -99,14 +113,18 @@ namespace NomadGo.AppShell
 
             rotAngle   = webCamTexture.videoRotationAngle;
             isMirrored = webCamTexture.videoVerticallyMirrored;
-            Debug.Log($"[CameraFix] Ready: {webCamTexture.width}x{webCamTexture.height} " +
-                      $"rotAngle={rotAngle} mirror={isMirrored}");
 
-            // Intermediate ARGB32 RT — same size as camera sensor output
+            // Vulkan (Android 15 default): Graphics.Blit stores RT with Y=0 at TOP,
+            // but GL.TexCoord2 addresses V=0 at BOTTOM → must invert V axis.
+            invertV = SystemInfo.graphicsUVStartsAtTop;
+
+            Debug.Log($"[CameraFix] Ready: {webCamTexture.width}x{webCamTexture.height} " +
+                      $"rotAngle={rotAngle} mirror={isMirrored} " +
+                      $"invertV={invertV} api={SystemInfo.graphicsDeviceType}");
+
             blitRT = new RenderTexture(webCamTexture.width, webCamTexture.height, 0, RenderTextureFormat.ARGB32);
             blitRT.Create();
 
-            // Simple unlit material for GL drawing
             var shader = Shader.Find("Unlit/Texture");
             if (shader == null || !shader.isSupported) shader = Shader.Find("Sprites/Default");
             drawMat = new Material(shader);
@@ -118,14 +136,9 @@ namespace NomadGo.AppShell
         {
             if (!cameraReady || webCamTexture == null || !webCamTexture.isPlaying) return;
             if (!webCamTexture.didUpdateThisFrame) return;
-
-            // STEP 1: Convert OES texture → regular ARGB32 via Graphics.Blit
-            // This is safe to call in Update — it handles GL_TEXTURE_EXTERNAL_OES correctly
             Graphics.Blit(webCamTexture, blitRT);
         }
 
-        // STEP 2: Draw blitRT to full screen using GL in OnPostRender
-        // OnPostRender is the correct place for GL screen-space drawing
         private void OnPostRender()
         {
             if (!cameraReady || blitRT == null || drawMat == null) return;
@@ -134,79 +147,83 @@ namespace NomadGo.AppShell
 
             GL.PushMatrix();
             GL.LoadOrtho();
-
             drawMat.SetPass(0);
             GL.Begin(GL.QUADS);
 
+            // v0/v1 account for Vulkan Y-axis inversion:
+            // invertV=false (OpenGL ES): v0=0 (bottom), v1=1 (top)  → standard
+            // invertV=true  (Vulkan)   : v0=1 (top),    v1=0 (bottom) → flipped
+            float v0 = invertV ? 1f : 0f;
+            float v1 = invertV ? 0f : 1f;
+
+            // Vertex order: BL(0,0) → BR(1,0) → TR(1,1) → TL(0,1) in screen space
             if (rotAngle == 0 || rotAngle == 360)
             {
-                // Landscape or no rotation — flip V for Android Y-axis
                 if (isMirrored)
                 {
-                    GL.TexCoord2(1, 1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(0, 1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(0, 1, 0);
+                    GL.TexCoord2(1, v1); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(0, v1); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(0, 1, 0);
                 }
                 else
                 {
-                    GL.TexCoord2(0, 1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(0, 1, 0);
+                    GL.TexCoord2(0, v1); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(1, v1); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(0, 1, 0);
                 }
             }
             else if (rotAngle == 90)
             {
-                // Portrait mode — rotate 90° CW + V-flip for Android
-                // Verified on Moto G84 5G (Android 15, back camera)
+                // Portrait mode: sensor landscape → rotate 90° CW for display
                 if (isMirrored)
                 {
-                    GL.TexCoord2(0, 0); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(0, 1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(0, 1, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(0, v1); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(1, v1); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(0, 1, 0);
                 }
                 else
                 {
-                    GL.TexCoord2(1, 0); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(0, 1); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(0, 1, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(1, v1); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(0, v1); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(0, 1, 0);
                 }
             }
             else if (rotAngle == 180)
             {
                 if (isMirrored)
                 {
-                    GL.TexCoord2(0, 1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(0, 1, 0);
+                    GL.TexCoord2(0, v1); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(1, v1); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(0, 1, 0);
                 }
                 else
                 {
-                    GL.TexCoord2(1, 0); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(0, 1); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(0, 1, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(0, v1); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(1, v1); GL.Vertex3(0, 1, 0);
                 }
             }
             else // 270
             {
                 if (isMirrored)
                 {
-                    GL.TexCoord2(1, 1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, 1); GL.Vertex3(0, 1, 0);
+                    GL.TexCoord2(1, v1); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(0, v1); GL.Vertex3(0, 1, 0);
                 }
                 else
                 {
-                    GL.TexCoord2(0, 1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(0, 1, 0);
+                    GL.TexCoord2(0, v1); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(1, v1); GL.Vertex3(0, 1, 0);
                 }
             }
 
