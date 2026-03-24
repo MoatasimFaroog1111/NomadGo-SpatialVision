@@ -13,16 +13,12 @@ using Unity.Sentis;
 namespace NomadGo.Vision
 {
     /// <summary>
-    /// AI Inference Engine v2 — Unity Sentis + YOLOv8n
+    /// AI Inference Engine v3 — Unity Sentis 1.0.0 + YOLOv8n
     ///
-    /// Real AI mode (requires com.unity.sentis in manifest + yolov8n.onnx in StreamingAssets/Models/):
-    ///   - Loads model at startup via async coroutine
-    ///   - GPU-accelerated inference (Sentis GPUCompute backend)
-    ///   - Parses YOLOv8 output format (1, 84, 8400): 80 COCO classes
+    /// Real AI: loads yolov8n.onnx from StreamingAssets, runs on GPU via Sentis.
+    /// Detects 80 COCO classes (bottle, cup, food, grocery items, etc.)
     ///
-    /// Demo mode (auto-fallback when model/package not available):
-    ///   - 5 stable simulated detections at fixed positions
-    ///   - Lets the full UI/count/report pipeline be tested
+    /// Falls back to Demo mode if model/package unavailable.
     /// </summary>
     public class ONNXInferenceEngine : MonoBehaviour
     {
@@ -34,8 +30,8 @@ namespace NomadGo.Vision
         private int      maxDetections        = 100;
         private string[] labels;
 
-        private bool  isLoaded    = false;
-        private bool  useDemoMode = false;
+        private bool  isLoaded       = false;
+        private bool  useDemoMode    = false;
         private float lastInferenceMs = 0f;
 
 #if UNITY_SENTIS
@@ -47,7 +43,7 @@ namespace NomadGo.Vision
         public bool  IsLoaded            => isLoaded;
         public float LastInferenceTimeMs => lastInferenceMs;
 
-        // ── Public API ────────────────────────────────────────────────────────────
+        // ── Public API ───────────────────────────────────────────────────────────
 
         public void Initialize(AppShell.ModelConfig config)
         {
@@ -64,48 +60,19 @@ namespace NomadGo.Vision
 
         public List<DetectionResult> RunInference(Texture2D frame)
         {
-            if (useDemoMode || !isLoaded) return GenerateDemoDetections();
-
 #if UNITY_SENTIS
-            if (!sentisReady || sentisWorker == null || frame == null)
-                return GenerateDemoDetections();
-
-            try
+            if (!useDemoMode && sentisReady && sentisWorker != null && frame != null)
             {
-                var sw = System.Diagnostics.Stopwatch.StartNew();
-
-                var inputTensor = PreprocessTexture(frame);
-                if (inputTensor == null) return GenerateDemoDetections();
-
-                sentisWorker.Execute(inputTensor);
-                inputTensor.Dispose();
-
-                // YOLOv8 output layer name is "output0"
-                TensorFloat output = sentisWorker.PeekOutput("output0") as TensorFloat;
-                if (output == null)
+                try { return RunSentisInference(frame); }
+                catch (Exception ex)
                 {
-                    Debug.LogError("[ONNXEngine] 'output0' not found in model outputs.");
+                    Debug.LogError($"[ONNXEngine] Inference error: {ex.Message}");
                     return GenerateDemoDetections();
                 }
-
-                output.MakeReadable();
-                float[] data = output.ToReadOnlyArray();
-
-                sw.Stop();
-                lastInferenceMs = (float)sw.Elapsed.TotalMilliseconds;
-
-                var raw     = ParseYOLOv8Output(data);
-                var final   = ApplyNMS(raw);
-                return final.Take(maxDetections).ToList();
             }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[ONNXEngine] Inference error: {ex.Message}");
-                return GenerateDemoDetections();
-            }
-#else
-            return GenerateDemoDetections();
 #endif
+            return useDemoMode || isLoaded ? GenerateDemoDetections()
+                                           : new List<DetectionResult>();
         }
 
         public string GetLabel(int classId)
@@ -115,7 +82,7 @@ namespace NomadGo.Vision
             return $"class_{classId}";
         }
 
-        // ── Labels ────────────────────────────────────────────────────────────────
+        // ── Labels ───────────────────────────────────────────────────────────────
 
         private void LoadLabels(string labelsPath)
         {
@@ -130,7 +97,7 @@ namespace NomadGo.Vision
             }
             else
             {
-                // Full COCO 80 classes built-in
+                // Full COCO 80 classes
                 labels = new[]
                 {
                     "person","bicycle","car","motorcycle","airplane","bus","train","truck","boat",
@@ -144,57 +111,59 @@ namespace NomadGo.Vision
                     "mouse","remote","keyboard","cell phone","microwave","oven","toaster","sink",
                     "refrigerator","book","clock","vase","scissors","teddy bear","hair drier","toothbrush"
                 };
-                Debug.LogWarning("[ONNXEngine] labels.txt not found — using built-in COCO 80 classes.");
+                Debug.LogWarning("[ONNXEngine] labels.txt not found — using built-in COCO 80.");
             }
         }
 
-        // ── Async model loading ───────────────────────────────────────────────────
+        // ── Model loading (async, Android-safe) ──────────────────────────────────
 
         private IEnumerator LoadModelAsync()
         {
 #if UNITY_SENTIS
             string onnxPath = Path.Combine(Application.streamingAssetsPath, modelPath);
-            Debug.Log($"[ONNXEngine] Loading model: {onnxPath}");
+            Debug.Log($"[ONNXEngine] Loading: {onnxPath}");
 
-            byte[] modelBytes = null;
+            byte[] bytes = null;
 
 #if UNITY_ANDROID && !UNITY_EDITOR
-            // Android: StreamingAssets are compressed inside APK — must use UnityWebRequest
             using (var req = UnityWebRequest.Get(onnxPath))
             {
                 yield return req.SendWebRequest();
                 if (req.result != UnityWebRequest.Result.Success)
                 {
-                    Debug.LogWarning($"[ONNXEngine] Model load failed: {req.error} → DEMO mode.");
+                    Debug.LogWarning($"[ONNXEngine] Failed: {req.error} → DEMO mode.");
                     ActivateDemoMode(); yield break;
                 }
-                modelBytes = req.downloadHandler.data;
+                bytes = req.downloadHandler.data;
             }
 #else
             if (!File.Exists(onnxPath))
             {
-                Debug.LogWarning($"[ONNXEngine] Model not found at {onnxPath} → DEMO mode.");
+                Debug.LogWarning($"[ONNXEngine] Not found: {onnxPath} → DEMO mode.");
                 ActivateDemoMode(); yield break;
             }
-            modelBytes = File.ReadAllBytes(onnxPath);
+            bytes = File.ReadAllBytes(onnxPath);
             yield return null;
 #endif
             try
             {
-                sentisModel  = ModelLoader.Load(modelBytes);
-                sentisWorker = WorkerFactory.CreateWorker(BackendType.GPUCompute, sentisModel);
-                sentisReady  = true;
-                isLoaded     = true;
-                Debug.Log($"[ONNXEngine] Model ready ({modelBytes.Length / 1024 / 1024f:F1} MB). Real AI active.");
+                sentisModel = ModelLoader.Load(bytes);
+
+                // Try GPU first, fall back to CPU
+                try   { sentisWorker = WorkerFactory.CreateWorker(BackendType.GPUCompute, sentisModel); }
+                catch { sentisWorker = WorkerFactory.CreateWorker(BackendType.CPU, sentisModel); }
+
+                sentisReady = true;
+                isLoaded    = true;
+                Debug.Log($"[ONNXEngine] Real AI ready ({bytes.Length/1024/1024f:F1} MB). 80 COCO classes.");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[ONNXEngine] Sentis init error: {ex.Message} → DEMO mode.");
+                Debug.LogError($"[ONNXEngine] Sentis init failed: {ex.Message} → DEMO mode.");
                 ActivateDemoMode();
             }
 #else
-            // Sentis package not installed
-            Debug.LogWarning("[ONNXEngine] Unity Sentis not installed → DEMO mode.");
+            Debug.LogWarning("[ONNXEngine] UNITY_SENTIS not defined → DEMO mode.");
             ActivateDemoMode();
             yield return null;
 #endif
@@ -207,58 +176,81 @@ namespace NomadGo.Vision
             Debug.Log("[ONNXEngine] DEMO mode active.");
         }
 
-        // ── Preprocessing ─────────────────────────────────────────────────────────
+        // ── Sentis inference ─────────────────────────────────────────────────────
 
 #if UNITY_SENTIS
-        private TensorFloat PreprocessTexture(Texture2D src)
+        private List<DetectionResult> RunSentisInference(Texture2D frame)
         {
-            try
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+
+            // 1. Preprocess → NCHW float32 [1, 3, 640, 640]
+            float[] ncnhw = TextureToNCHW(frame);
+            var inputTensor = new TensorFloat(new TensorShape(1, 3, inputHeight, inputWidth), ncnhw);
+
+            // 2. Run inference
+            sentisWorker.Execute(inputTensor);
+            inputTensor.Dispose();
+
+            // 3. Read output (YOLOv8 output name: "output0", shape: [1, 84, 8400])
+            var rawOutput = sentisWorker.PeekOutput("output0") as TensorFloat;
+            if (rawOutput == null)
             {
-                // Resize to 640×640
-                var rt   = RenderTexture.GetTemporary(inputWidth, inputHeight, 0, RenderTextureFormat.ARGB32);
-                Graphics.Blit(src, rt);
-                var prev = RenderTexture.active;
-                RenderTexture.active = rt;
-                var resized = new Texture2D(inputWidth, inputHeight, TextureFormat.RGB24, false);
-                resized.ReadPixels(new Rect(0, 0, inputWidth, inputHeight), 0, 0);
-                resized.Apply();
-                RenderTexture.active = prev;
-                RenderTexture.ReleaseTemporary(rt);
-
-                // Build NCHW float tensor [1, 3, H, W], normalized 0–1
-                Color32[] px = resized.GetPixels32();
-                Destroy(resized);
-                int hw = inputWidth * inputHeight;
-                float[] nchw = new float[3 * hw];
-
-                for (int i = 0; i < hw; i++)
-                {
-                    // Flip Y: Unity Y=0 is bottom; NCHW Y=0 is top
-                    int row = inputHeight - 1 - (i / inputWidth);
-                    int col = i % inputWidth;
-                    int s   = row * inputWidth + col;
-                    nchw[0 * hw + i] = px[s].r / 255f;
-                    nchw[1 * hw + i] = px[s].g / 255f;
-                    nchw[2 * hw + i] = px[s].b / 255f;
-                }
-
-                return new TensorFloat(new TensorShape(1, 3, inputHeight, inputWidth), nchw);
+                Debug.LogError("[ONNXEngine] 'output0' missing from model outputs.");
+                return GenerateDemoDetections();
             }
-            catch (Exception ex)
+
+            rawOutput.MakeReadable();
+
+            // Read data using index operator (works in all Sentis 1.x versions)
+            int total = rawOutput.shape.length;
+            float[] data = new float[total];
+            for (int i = 0; i < total; i++) data[i] = rawOutput[i];
+
+            sw.Stop();
+            lastInferenceMs = (float)sw.Elapsed.TotalMilliseconds;
+
+            var detections = ParseYOLOv8(data);
+            return ApplyNMS(detections).Take(maxDetections).ToList();
+        }
+
+        private float[] TextureToNCHW(Texture2D src)
+        {
+            // Resize to 640×640
+            var rt   = RenderTexture.GetTemporary(inputWidth, inputHeight, 0, RenderTextureFormat.ARGB32);
+            Graphics.Blit(src, rt);
+            var prev = RenderTexture.active;
+            RenderTexture.active = rt;
+            var tex = new Texture2D(inputWidth, inputHeight, TextureFormat.RGB24, false);
+            tex.ReadPixels(new Rect(0, 0, inputWidth, inputHeight), 0, 0);
+            tex.Apply();
+            RenderTexture.active = prev;
+            RenderTexture.ReleaseTemporary(rt);
+
+            Color32[] px = tex.GetPixels32();
+            Destroy(tex);
+
+            int hw    = inputWidth * inputHeight;
+            float[] d = new float[3 * hw];
+
+            for (int i = 0; i < hw; i++)
             {
-                Debug.LogError($"[ONNXEngine] Preprocess error: {ex.Message}");
-                return null;
+                // Flip Y: Unity Y=0 is bottom; NCHW Y=0 is top
+                int row = inputHeight - 1 - (i / inputWidth);
+                int col = i % inputWidth;
+                int s   = row * inputWidth + col;
+                d[0 * hw + i] = px[s].r / 255f;
+                d[1 * hw + i] = px[s].g / 255f;
+                d[2 * hw + i] = px[s].b / 255f;
             }
+            return d;
         }
 #endif
 
-        // ── YOLOv8 output parsing ─────────────────────────────────────────────────
+        // ── YOLOv8 output parser ─────────────────────────────────────────────────
+        //   Shape: [1, 84, 8400]  features = 0-3 (cx,cy,w,h px/640) + 4-83 (class scores)
 
-        private List<DetectionResult> ParseYOLOv8Output(float[] data)
+        private List<DetectionResult> ParseYOLOv8(float[] data)
         {
-            // Shape: (1, 84, 8400)  [batch, features, anchors]
-            // Features 0-3: cx,cy,w,h in pixels (scale 0-640)
-            // Features 4-83: class confidence scores
             const int numAnchors = 8400;
             int numClasses = labels != null ? Mathf.Min(labels.Length, 80) : 80;
             float sx = 1f / inputWidth;
@@ -280,12 +272,10 @@ namespace NomadGo.Vision
                 float cy = data[1 * numAnchors + a] * sy;
                 float bw = data[2 * numAnchors + a] * sx;
                 float bh = data[3 * numAnchors + a] * sy;
-                float bx = cx - bw * 0.5f;
-                float by = cy - bh * 0.5f;
 
                 string lbl = (labels != null && maxCls < labels.Length) ? labels[maxCls] : $"cls{maxCls}";
                 results.Add(new DetectionResult(maxCls, lbl, maxConf,
-                    new Rect(Mathf.Clamp01(bx), Mathf.Clamp01(by),
+                    new Rect(Mathf.Clamp01(cx - bw*.5f), Mathf.Clamp01(cy - bh*.5f),
                              Mathf.Clamp(bw, 0.01f, 1f), Mathf.Clamp(bh, 0.01f, 1f))));
             }
             return results;
@@ -303,20 +293,18 @@ namespace NomadGo.Vision
                 for (int j = i + 1; j < dets.Count; j++)
                 {
                     if (sup[j] || dets[i].classId != dets[j].classId) continue;
-                    float x1 = Mathf.Max(dets[i].boundingBox.xMin, dets[j].boundingBox.xMin);
-                    float y1 = Mathf.Max(dets[i].boundingBox.yMin, dets[j].boundingBox.yMin);
-                    float x2 = Mathf.Min(dets[i].boundingBox.xMax, dets[j].boundingBox.xMax);
-                    float y2 = Mathf.Min(dets[i].boundingBox.yMax, dets[j].boundingBox.yMax);
+                    Rect a = dets[i].boundingBox, b = dets[j].boundingBox;
+                    float x1 = Mathf.Max(a.xMin, b.xMin), y1 = Mathf.Max(a.yMin, b.yMin);
+                    float x2 = Mathf.Min(a.xMax, b.xMax), y2 = Mathf.Min(a.yMax, b.yMax);
                     float inter = Mathf.Max(0, x2-x1) * Mathf.Max(0, y2-y1);
-                    float a = dets[i].boundingBox.width * dets[i].boundingBox.height;
-                    float b = dets[j].boundingBox.width * dets[j].boundingBox.height;
-                    if (inter / (a + b - inter) > nmsThreshold) sup[j] = true;
+                    float uni   = a.width*a.height + b.width*b.height - inter;
+                    if (uni > 0 && inter/uni > nmsThreshold) sup[j] = true;
                 }
             }
             return kept;
         }
 
-        // ── Demo mode ─────────────────────────────────────────────────────────────
+        // ── Demo mode ────────────────────────────────────────────────────────────
 
         private static readonly Rect[] _anchors =
         {
@@ -324,7 +312,6 @@ namespace NomadGo.Vision
             new Rect(0.10f,0.55f,0.22f,0.28f), new Rect(0.55f,0.55f,0.22f,0.28f),
             new Rect(0.33f,0.35f,0.20f,0.26f),
         };
-        // COCO indices: bottle=39, cup=41, bowl=45, apple=47, banana=46
         private static readonly int[] _demoClassIds = { 39, 41, 45, 47, 46 };
 
         private List<DetectionResult> GenerateDemoDetections()
@@ -339,7 +326,7 @@ namespace NomadGo.Vision
             for (int i = 0; i < _anchors.Length; i++)
             {
                 if (hideSet.Contains(i)) continue;
-                Rect a = _anchors[i]; float j = 0.008f;
+                Rect a  = _anchors[i]; float j = 0.008f;
                 int  cls = i < _demoClassIds.Length ? _demoClassIds[i] : 39;
                 string lbl = (labels != null && cls < labels.Length) ? labels[cls] : "item";
                 res.Add(new DetectionResult(cls, lbl, 0.78f + UnityEngine.Random.value * 0.18f,
@@ -352,7 +339,7 @@ namespace NomadGo.Vision
             return res;
         }
 
-        // ── Cleanup ───────────────────────────────────────────────────────────────
+        // ── Cleanup ──────────────────────────────────────────────────────────────
 
         private void OnDestroy()
         {
