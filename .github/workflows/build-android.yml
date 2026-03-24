@@ -43,60 +43,9 @@ jobs:
           shutil.copy('yolov8n.onnx', 'Assets/StreamingAssets/Models/yolov8n.onnx')
 
           size_mb = os.path.getsize('Assets/StreamingAssets/Models/yolov8n.onnx') / 1024 / 1024
-          print(f'Model ready: {size_mb:.1f} MB → Assets/StreamingAssets/Models/yolov8n.onnx')
+          print(f'Model ready: {size_mb:.1f} MB -> Assets/StreamingAssets/Models/yolov8n.onnx')
           PYEOF
           echo "ONNX model: $(ls -lh Assets/StreamingAssets/Models/yolov8n.onnx)"
-
-      - name: Add UNITY_SENTIS scripting define
-        run: |
-          python3 << 'PYEOF'
-          import re
-
-          path = 'ProjectSettings/ProjectSettings.asset'
-          content = open(path).read()
-
-          if 'UNITY_SENTIS' in content:
-              print('UNITY_SENTIS already present')
-          else:
-              # Platform IDs: 1=Standalone, 7=Android, 13=iOS, 19=WebGL
-              PLATFORMS = ['1', '7', '13', '19', '20']
-              define = 'UNITY_SENTIS'
-
-              # If scriptingDefineSymbols is empty dict
-              if 'scriptingDefineSymbols: {}' in content:
-                  lines = '\n'.join(f'    {p}: {define}' for p in PLATFORMS)
-                  content = content.replace(
-                      'scriptingDefineSymbols: {}',
-                      f'scriptingDefineSymbols:\n{lines}'
-                  )
-              else:
-                  # Try to append to platform 7 (Android)
-                  def add_to_platform(m):
-                      existing = m.group(2).strip()
-                      if define in existing:
-                          return m.group(0)
-                      new_val = f'{existing};{define}' if existing else define
-                      return f'{m.group(1)}{new_val}'
-
-                  for p in PLATFORMS:
-                      pattern = rf'(    {p}: )([^\n]*)'
-                      if re.search(pattern, content):
-                          content = re.sub(pattern, add_to_platform, content)
-                      else:
-                          # Add the platform line after scriptingDefineSymbols:
-                          content = re.sub(
-                              r'(scriptingDefineSymbols:\n)',
-                              rf'\g<1>    {p}: {define}\n',
-                              content
-                          )
-
-              open(path, 'w').write(content)
-              print('Added UNITY_SENTIS to ProjectSettings')
-
-          # Verify
-          lines = [l for l in open(path) if 'UNITY_SENTIS' in l or 'scriptingDefine' in l]
-          print('Result:', lines[:5])
-          PYEOF
 
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -198,12 +147,13 @@ jobs:
           name: "NomadGo SpatialVision v${{ github.run_number }}"
           body: |
             ## NomadGo SpatialVision - Release Build
-            - Real AI detection: YOLOv8n (80 COCO classes — bottles, cups, food, etc.)
-            - Unity Sentis GPU inference
+            - YOLOv8n ONNX model included in StreamingAssets (ready for Sentis integration)
+            - AI demo mode: bottle, cup, bowl, apple, banana detection simulation
             - Signed Release APK (arm64-v8a)
             - Min SDK: Android 7.0 (API 24)
             - Target SDK: Android 14 (API 34)
             - Compatible with Moto G84 5G (Android 15)
+            - OpenGL ES 2.0 (patched for maximum compatibility)
           files: build/Android/*.apk
           draft: false
           prerelease: false
