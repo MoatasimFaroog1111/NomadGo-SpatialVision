@@ -163,23 +163,23 @@ namespace NomadGo.AppShell
 
             if (rot == 0 || rot == 360)
             {
-                if (mir) { bl=(1,1); br=(0,1); tr=(0,0); tl=(1,0); }
-                else     { bl=(0,1); br=(1,1); tr=(1,0); tl=(0,0); }
+                if (mir) { bl=new Vector2(1,1); br=new Vector2(0,1); tr=new Vector2(0,0); tl=new Vector2(1,0); }
+                else     { bl=new Vector2(0,1); br=new Vector2(1,1); tr=new Vector2(1,0); tl=new Vector2(0,0); }
             }
             else if (rot == 90)
             {
-                if (mir) { bl=(0,0); br=(0,1); tr=(1,1); tl=(1,0); }
-                else     { bl=(1,0); br=(1,1); tr=(0,1); tl=(0,0); }
+                if (mir) { bl=new Vector2(0,0); br=new Vector2(0,1); tr=new Vector2(1,1); tl=new Vector2(1,0); }
+                else     { bl=new Vector2(1,0); br=new Vector2(1,1); tr=new Vector2(0,1); tl=new Vector2(0,0); }
             }
             else if (rot == 180)
             {
-                if (mir) { bl=(0,1); br=(1,1); tr=(1,0); tl=(0,0); }
-                else     { bl=(1,0); br=(0,0); tr=(0,1); tl=(1,1); }
+                if (mir) { bl=new Vector2(0,1); br=new Vector2(1,1); tr=new Vector2(1,0); tl=new Vector2(0,0); }
+                else     { bl=new Vector2(1,0); br=new Vector2(0,0); tr=new Vector2(0,1); tl=new Vector2(1,1); }
             }
             else // 270
             {
-                if (mir) { bl=(1,1); br=(1,0); tr=(0,0); tl=(0,1); }
-                else     { bl=(0,1); br=(0,0); tr=(1,0); tl=(1,1); }
+                if (mir) { bl=new Vector2(1,1); br=new Vector2(1,0); tr=new Vector2(0,0); tl=new Vector2(0,1); }
+                else     { bl=new Vector2(0,1); br=new Vector2(0,0); tr=new Vector2(1,0); tl=new Vector2(1,1); }
             }
 
             // Apply uvMode transform (0=none, 1=flipV, 2=flipU, 3=flipUV,
