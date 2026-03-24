@@ -277,6 +277,19 @@ namespace NomadGo.Vision
         }
 #endif
 
+        // ── IOU utility (used by IOUTracker) ─────────────────────────────────────
+
+        public static float ComputeIOU(Rect a, Rect b)
+        {
+            float x1 = Mathf.Max(a.xMin, b.xMin);
+            float y1 = Mathf.Max(a.yMin, b.yMin);
+            float x2 = Mathf.Min(a.xMax, b.xMax);
+            float y2 = Mathf.Min(a.yMax, b.yMax);
+            float inter = Mathf.Max(0, x2 - x1) * Mathf.Max(0, y2 - y1);
+            float uni   = a.width * a.height + b.width * b.height - inter;
+            return uni > 0f ? inter / uni : 0f;
+        }
+
         // ── NMS ──────────────────────────────────────────────────────────────────
 
         private List<DetectionResult> ApplyNMS(List<DetectionResult> dets)
