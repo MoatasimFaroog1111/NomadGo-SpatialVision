@@ -3,15 +3,18 @@ using UnityEngine;
 namespace NomadGo.AppShell
 {
     /// <summary>
-    /// FIXED: Removed hard dependency on ARSession.
-    /// ARFoundation features are optional — app works without ARCore.
+    /// v2: Removed arSessionObject.SetActive(true) from StartScan().
+    /// ARCore takes exclusive camera access when the ARSession is activated,
+    /// which kills WebCamTexture → black screen.
+    /// Since we use WebCamTexture for all camera input (YOLOv8 inference),
+    /// we must NOT activate ARSession during the app lifecycle.
     /// </summary>
     public class AppManager : MonoBehaviour
     {
         public static AppManager Instance { get; private set; }
 
         [Header("References (all optional)")]
-        [SerializeField] private GameObject arSessionObject; // FIXED: use GameObject instead of ARSession to avoid compile error when ARFoundation not installed
+        [SerializeField] private GameObject arSessionObject;
         [SerializeField] private Camera arCamera;
 
         private AppConfig appConfig;
@@ -31,6 +34,14 @@ namespace NomadGo.AppShell
             Instance = this;
             DontDestroyOnLoad(gameObject);
 
+            // CRITICAL: Disable ARSession at startup — ARCore will steal the camera
+            // from WebCamTexture if it initializes, causing a permanent black screen.
+            if (arSessionObject != null)
+            {
+                arSessionObject.SetActive(false);
+                Debug.Log("[AppManager] ARSession disabled — using WebCamTexture mode.");
+            }
+
             LoadConfiguration();
         }
 
@@ -45,7 +56,6 @@ namespace NomadGo.AppShell
             if (configText == null)
             {
                 Debug.LogError("[AppManager] CONFIG.json not found in Resources folder.");
-                // FIXED: Create default config instead of leaving null
                 appConfig = CreateDefaultConfig();
                 return;
             }
@@ -110,9 +120,7 @@ namespace NomadGo.AppShell
                 {
                     show_fps_overlay = true,
                     log_inference_time = true,
-                    show_memory_monitor = false,
-                    log_tracking_events = false,
-                    verbose_mode = false
+                    log_detection_results = false
                 }
             };
         }
@@ -121,16 +129,8 @@ namespace NomadGo.AppShell
         {
             if (appConfig == null)
             {
-                Debug.LogError("[AppManager] Config not available.");
+                Debug.LogError("[AppManager] Cannot initialize: appConfig is null.");
                 return;
-            }
-
-            // FIXED: Safe null checks for all subsystems
-            var diagnosticsManager = FindObjectOfType<Diagnostics.DiagnosticsManager>();
-            if (diagnosticsManager != null)
-            {
-                try { diagnosticsManager.Initialize(appConfig.diagnostics); }
-                catch (System.Exception ex) { Debug.LogError($"[AppManager] DiagnosticsManager init error: {ex.Message}"); }
             }
 
             var sessionStorage = FindObjectOfType<Storage.SessionStorage>();
@@ -175,9 +175,9 @@ namespace NomadGo.AppShell
 
             Debug.Log("[AppManager] Starting scan...");
 
-            // FIXED: Safe AR session enable
-            if (arSessionObject != null)
-                arSessionObject.SetActive(true);
+            // NOTE: arSessionObject.SetActive(true) intentionally REMOVED.
+            // ARCore steals the camera device from WebCamTexture when activated,
+            // resulting in a permanent black screen. We use WebCamTexture exclusively.
 
             var sessionStorage = FindObjectOfType<Storage.SessionStorage>();
             sessionStorage?.StartNewSession();
