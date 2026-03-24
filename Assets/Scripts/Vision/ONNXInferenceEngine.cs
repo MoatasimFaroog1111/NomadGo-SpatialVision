@@ -135,9 +135,51 @@ namespace NomadGo.Vision
 
             return finalDetections;
 #else
-            lastInferenceTimeMs = 0f;
-            return new List<DetectionResult>();
+            // DEMO MODE: no ONNX Runtime — generate stable fake detections
+            // so the full scanning/counting/UI pipeline is testable without a real model.
+            return GenerateDemoDetections();
 #endif
+        }
+
+        // ── Demo mode helpers ─────────────────────────────────────────────────────
+
+        private static readonly Rect[] demoAnchors = new Rect[]
+        {
+            new Rect(0.10f, 0.15f, 0.22f, 0.28f),
+            new Rect(0.55f, 0.15f, 0.22f, 0.28f),
+            new Rect(0.10f, 0.55f, 0.22f, 0.28f),
+            new Rect(0.55f, 0.55f, 0.22f, 0.28f),
+            new Rect(0.33f, 0.35f, 0.20f, 0.26f),
+        };
+
+        private static readonly string[] demoLabels =
+            { "bottle", "can", "box", "carton", "container" };
+
+        private List<DetectionResult> GenerateDemoDetections()
+        {
+            lastInferenceTimeMs = 2.5f;
+            var results = new List<DetectionResult>();
+
+            int hideCount = UnityEngine.Random.Range(0, 3);
+            var hideSet = new System.Collections.Generic.HashSet<int>();
+            while (hideSet.Count < hideCount)
+                hideSet.Add(UnityEngine.Random.Range(0, demoAnchors.Length));
+
+            for (int i = 0; i < demoAnchors.Length; i++)
+            {
+                if (hideSet.Contains(i)) continue;
+                Rect a = demoAnchors[i];
+                float jit = 0.008f;
+                float conf = 0.78f + UnityEngine.Random.value * 0.18f;
+                string lbl = i < demoLabels.Length ? demoLabels[i] : "item";
+
+                results.Add(new DetectionResult(i, lbl, conf, new Rect(
+                    Mathf.Clamp01(a.x + (UnityEngine.Random.value - 0.5f) * jit),
+                    Mathf.Clamp01(a.y + (UnityEngine.Random.value - 0.5f) * jit),
+                    Mathf.Clamp(a.width  + (UnityEngine.Random.value - 0.5f) * jit, 0.05f, 0.45f),
+                    Mathf.Clamp(a.height + (UnityEngine.Random.value - 0.5f) * jit, 0.05f, 0.45f))));
+            }
+            return results;
         }
 
         private float[] PreprocessFrame(Texture2D frame)
