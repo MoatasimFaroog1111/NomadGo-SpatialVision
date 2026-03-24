@@ -23,10 +23,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: Library
-          key: Library-Android-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          key: Library-Android-v3-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
           restore-keys: |
-            Library-Android-
-            Library-
+            Library-Android-v3-
 
       - name: Download YOLOv8n ONNX Model
         run: |
@@ -47,7 +46,7 @@ jobs:
           PYEOF
           echo "ONNX model: $(ls -lh Assets/StreamingAssets/Models/yolov8n.onnx)"
 
-      - name: Add UNITY_SENTIS scripting define
+      - name: Add UNITY_BARRACUDA scripting define
         run: |
           python3 << 'PYEOF'
           import re
@@ -55,30 +54,33 @@ jobs:
           path = 'ProjectSettings/ProjectSettings.asset'
           content = open(path).read()
 
-          if 'UNITY_SENTIS' in content:
-              print('UNITY_SENTIS already present')
+          if 'UNITY_BARRACUDA' in content:
+              print('UNITY_BARRACUDA already present')
           elif 'scriptingDefineSymbols: {}' in content:
-              lines = '\n'.join(f'    {p}: UNITY_SENTIS' for p in ['1','7','13','19','20'])
+              lines = '\n'.join(f'    {p}: UNITY_BARRACUDA' for p in ['1','7','13','19','20'])
               content = content.replace('scriptingDefineSymbols: {}',
                                         f'scriptingDefineSymbols:\n{lines}')
               open(path, 'w').write(content)
-              print('Added UNITY_SENTIS (was empty dict)')
+              print('Added UNITY_BARRACUDA (was empty dict)')
           else:
               def add_define(m):
                   v = m.group(2).strip()
-                  return m.group(1) + (f'{v};UNITY_SENTIS' if v else 'UNITY_SENTIS')
+                  new_v = f'{v};UNITY_BARRACUDA' if v else 'UNITY_BARRACUDA'
+                  # Remove any old Sentis/Barracuda defines first
+                  new_v = new_v.replace('UNITY_SENTIS;', '').replace(';UNITY_SENTIS', '').replace('UNITY_SENTIS', '')
+                  return m.group(1) + new_v.strip(';')
               for p in ['1','7','13','19','20']:
                   pattern = rf'(    {p}: )([^\n]*)'
                   if re.search(pattern, content):
                       content = re.sub(pattern, add_define, content)
                   else:
                       content = re.sub(r'(scriptingDefineSymbols:\n)',
-                                       rf'\g<1>    {p}: UNITY_SENTIS\n', content)
+                                       rf'\g<1>    {p}: UNITY_BARRACUDA\n', content)
               open(path, 'w').write(content)
-              print('Added UNITY_SENTIS to existing defines')
+              print('Added UNITY_BARRACUDA to existing defines')
 
-          found = [l.strip() for l in open(path) if 'UNITY_SENTIS' in l]
-          print('Verified:', found[:4])
+          found = [l.strip() for l in open(path) if 'UNITY_BARRACUDA' in l or 'UNITY_SENTIS' in l]
+          print('Result:', found[:4])
           PYEOF
 
       - name: Free Disk Space
@@ -117,7 +119,6 @@ jobs:
         run: |
           APK=$(find build/Android -name "*.apk" | head -1)
           echo "Source APK: $APK ($(du -sh $APK | cut -f1))"
-
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.keystore
           sudo apt-get install -y zipalign apksigner 2>/dev/null || true
 
@@ -126,7 +127,6 @@ jobs:
 
           apk = glob.glob('build/Android/*.apk')[0]
           print(f"Patching: {apk}")
-
           with zipfile.ZipFile(apk, 'r') as z:
               manifest = bytearray(z.read('AndroidManifest.xml'))
 
@@ -137,28 +137,25 @@ jobs:
                   if struct.unpack_from('<I', manifest, i-4)[0] == 0x11000008:
                       struct.pack_into('<I', manifest, i, 0x00020000)
                       patched += 1
-                      print(f'  Patched glEsVersion at offset {i}')
-
-          print(f'Total patches: {patched}')
+          print(f'Patched {patched} glEsVersion entries')
 
           with zipfile.ZipFile(apk, 'r') as zin:
               with zipfile.ZipFile('/tmp/patched.apk', 'w') as zout:
                   for item in zin.infolist():
                       data = bytes(manifest) if item.filename == 'AndroidManifest.xml' else zin.read(item.filename)
                       zout.writestr(item, data)
-          print('Done -> /tmp/patched.apk')
           PYEOF
 
-          zipalign -f -p 4 /tmp/patched.apk /tmp/aligned.apk && echo "Aligned" || cp /tmp/patched.apk /tmp/aligned.apk
+          zipalign -f -p 4 /tmp/patched.apk /tmp/aligned.apk || cp /tmp/patched.apk /tmp/aligned.apk
           apksigner sign \
             --ks /tmp/release.keystore \
             --ks-pass "pass:${{ secrets.ANDROID_KEYSTORE_PASS }}" \
             --ks-key-alias "${{ secrets.ANDROID_KEYALIAS_NAME }}" \
             --key-pass "pass:${{ secrets.ANDROID_KEYALIAS_PASS }}" \
-            --out /tmp/final.apk /tmp/aligned.apk && echo "Signed" || cp /tmp/aligned.apk /tmp/final.apk
+            --out /tmp/final.apk /tmp/aligned.apk || cp /tmp/aligned.apk /tmp/final.apk
           sudo cp /tmp/final.apk "$APK" && sudo chmod 644 "$APK"
-          apksigner verify "$APK" && echo "Verification PASSED" || echo "Verify warning"
-          echo "Final: $(ls -lh $APK)"
+          apksigner verify "$APK" && echo "Verified OK" || echo "Verify warning"
+          echo "Final APK: $(ls -lh $APK)"
 
       - name: Upload Signed APK Artifact
         uses: actions/upload-artifact@v4
@@ -174,10 +171,11 @@ jobs:
           name: "NomadGo SpatialVision v${{ github.run_number }}"
           body: |
             ## NomadGo SpatialVision - Real AI Build
-            - Real AI inference: YOLOv8n via Unity Sentis 1.0.0
-            - Detects: bottle, cup, bowl, apple, banana, pizza, donut, cake, sandwich, and 70+ more classes
-            - Signed Release APK (arm64-v8a) | Min SDK: Android 7.0 | Target SDK: Android 14
-            - Compatible with Moto G84 5G (Android 15) | OpenGL ES 2.0 patched
+            - Real AI inference: YOLOv8n via Unity Barracuda 3.0.0
+            - Detects: bottle, cup, bowl, food, grocery items (80 COCO classes)
+            - Signed Release APK (arm64-v8a)
+            - Min SDK: Android 7.0 (API 24) | Target: Android 14 (API 34)
+            - Compatible with Moto G84 5G (Android 15)
           files: build/Android/*.apk
           draft: false
           prerelease: false
