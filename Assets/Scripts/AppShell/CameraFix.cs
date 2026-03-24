@@ -1,24 +1,25 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace NomadGo.AppShell
 {
     /// <summary>
-    /// Renders the back camera as a full-screen background using GL.DrawTexture in OnPostRender.
-    /// Tested on Moto G84 5G (Android 15, portrait mode).
-    /// v2: Fixed upside-down image by correcting UV coordinates for rotAngle=90.
+    /// FIXED v2: Use RawImage instead of GL.DrawTexture to avoid shader issues.
+    /// GL.DrawTexture causes PINK/MAGENTA on many Android devices when shader is not found.
+    /// RawImage approach works reliably on all Android devices.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class CameraFix : MonoBehaviour
     {
         private Camera cam;
         private WebCamTexture webCamTexture;
-        private Material camMat;
+        private RawImage cameraImage;
+        private Canvas cameraCanvas;
         private bool cameraReady = false;
         private int rotAngle = 0;
         private bool isMirrored = false;
 
-        // Public accessor for other scripts (FrameProcessor)
         public WebCamTexture CameraTexture => webCamTexture;
         public bool IsReady => cameraReady;
 
@@ -29,19 +30,48 @@ namespace NomadGo.AppShell
             {
                 cam.clearFlags = CameraClearFlags.SolidColor;
                 cam.backgroundColor = Color.black;
-                cam.allowHDR = false;
-                cam.allowMSAA = false;
                 cam.depth = -10;
             }
         }
 
         private void Start()
         {
+            BuildCameraCanvas();
             StartCoroutine(StartCamera());
+        }
+
+        private void BuildCameraCanvas()
+        {
+            // FIXED: Use a dedicated canvas behind the UI canvas, with RawImage for camera feed
+            // This avoids GL shader issues entirely
+            var cameraCanvasGO = new GameObject("CameraCanvas");
+            DontDestroyOnLoad(cameraCanvasGO);
+
+            cameraCanvas = cameraCanvasGO.AddComponent<Canvas>();
+            cameraCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            cameraCanvas.sortingOrder = -100; // Behind everything else
+
+            cameraCanvasGO.AddComponent<CanvasScaler>();
+            cameraCanvasGO.AddComponent<GraphicRaycaster>();
+
+            // Full-screen RawImage to display camera
+            var imageGO = new GameObject("CameraImage");
+            imageGO.transform.SetParent(cameraCanvasGO.transform, false);
+
+            var rt = imageGO.AddComponent<RectTransform>();
+            rt.anchorMin = Vector2.zero;
+            rt.anchorMax = Vector2.one;
+            rt.offsetMin = Vector2.zero;
+            rt.offsetMax = Vector2.zero;
+
+            cameraImage = imageGO.AddComponent<RawImage>();
+            cameraImage.color = Color.black; // Black until camera starts
+            cameraImage.raycastTarget = false;
         }
 
         private IEnumerator StartCamera()
         {
+            // Request permission
             yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
 
             if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
@@ -61,6 +91,7 @@ namespace NomadGo.AppShell
                     break;
                 }
             }
+
             if (string.IsNullOrEmpty(camName) && WebCamTexture.devices.Length > 0)
                 camName = WebCamTexture.devices[0].name;
 
@@ -70,137 +101,79 @@ namespace NomadGo.AppShell
                 yield break;
             }
 
-            Debug.Log($"[CameraFix] Opening: {camName}");
+            Debug.Log($"[CameraFix] Opening camera: {camName}");
             webCamTexture = new WebCamTexture(camName, 1280, 720, 30);
             webCamTexture.Play();
 
-            // Wait until camera is producing frames
+            // Wait for camera to produce frames
             float timeout = 10f;
             while (webCamTexture.width <= 16)
             {
                 timeout -= Time.deltaTime;
-                if (timeout <= 0) { Debug.LogError("[CameraFix] Timeout waiting for camera!"); yield break; }
+                if (timeout <= 0)
+                {
+                    Debug.LogError("[CameraFix] Timeout waiting for camera frames!");
+                    yield break;
+                }
                 yield return null;
             }
 
             yield return new WaitForSeconds(0.3f);
 
-            // Get raw rotation from device
             rotAngle = webCamTexture.videoRotationAngle;
             isMirrored = webCamTexture.videoVerticallyMirrored;
+
             Debug.Log($"[CameraFix] Camera ready: {webCamTexture.width}x{webCamTexture.height} " +
-                      $"rotAngle={rotAngle} mirror={isMirrored}");
+                      $"rotation={rotAngle} mirrored={isMirrored}");
 
-            // Create material
-            var shader = Shader.Find("Hidden/BlitCopy");
-            if (shader == null || !shader.isSupported) shader = Shader.Find("Unlit/Texture");
-            if (shader == null || !shader.isSupported) shader = Shader.Find("Sprites/Default");
-            camMat = new Material(shader);
-            camMat.mainTexture = webCamTexture;
+            // FIXED: Assign texture to RawImage and apply rotation/flip via RectTransform rotation
+            cameraImage.texture = webCamTexture;
+            cameraImage.color = Color.white;
 
+            ApplyRotationCorrection();
             cameraReady = true;
         }
 
-        // OnPostRender is called after the camera renders — works even with empty scene
-        private void OnPostRender()
+        private void ApplyRotationCorrection()
         {
-            if (!cameraReady || webCamTexture == null || !webCamTexture.isPlaying || camMat == null)
-                return;
+            if (cameraImage == null) return;
 
-            camMat.mainTexture = webCamTexture;
+            var rt = cameraImage.rectTransform;
 
-            GL.PushMatrix();
-            GL.LoadOrtho();
-            camMat.SetPass(0);
+            // FIXED: Use rotation and scale to fix orientation
+            // rotAngle=90 is standard for portrait Android
+            float zRot = 0f;
+            float scaleX = 1f;
+            float scaleY = 1f;
 
-            // GL coordinate system: (0,0) = bottom-left, (1,1) = top-right
-            // WebCamTexture on Android:
-            //   videoRotationAngle = 90 means the sensor is rotated 90° CW
-            //   To display correctly, we rotate the UV 90° CCW
-            //
-            // Moto G84 5G portrait: rotAngle=90, mirror=false
-            // Correct UV mapping for rotAngle=90 (verified):
-            //   screen bottom-left  (0,0) → UV (1,0)
-            //   screen bottom-right (1,0) → UV (1,1)
-            //   screen top-right    (1,1) → UV (0,1)
-            //   screen top-left     (0,1) → UV (0,0)
-
-            GL.Begin(GL.QUADS);
-
-            if (rotAngle == 0)
+            switch (rotAngle)
             {
-                if (isMirrored)
-                {
-                    // Mirrored horizontally
-                    GL.TexCoord2(1, 0); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(0, 1); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(0, 1, 0);
-                }
-                else
-                {
-                    GL.TexCoord2(0, 0); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, 1); GL.Vertex3(0, 1, 0);
-                }
-            }
-            else if (rotAngle == 90)
-            {
-                // Rotate 90° CW sensor → display 90° CCW correction
-                if (isMirrored)
-                {
-                    GL.TexCoord2(0, 0); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(0, 1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(0, 1, 0);
-                }
-                else
-                {
-                    // Standard back camera on Moto G84 portrait
-                    GL.TexCoord2(1, 0); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(0, 1); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(0, 1, 0);
-                }
-            }
-            else if (rotAngle == 180)
-            {
-                if (isMirrored)
-                {
-                    GL.TexCoord2(0, 1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(0, 1, 0);
-                }
-                else
-                {
-                    GL.TexCoord2(1, 1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(0, 1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(0, 1, 0);
-                }
-            }
-            else // 270
-            {
-                if (isMirrored)
-                {
-                    GL.TexCoord2(1, 1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, 1); GL.Vertex3(0, 1, 0);
-                }
-                else
-                {
-                    GL.TexCoord2(0, 1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(0, 1, 0);
-                }
+                case 90:
+                    zRot = -90f;
+                    // After 90° rotation, width becomes height → stretch to fill
+                    float aspect = (float)Screen.height / Screen.width;
+                    scaleX = aspect;
+                    scaleY = aspect;
+                    break;
+                case 180:
+                    zRot = 180f;
+                    break;
+                case 270:
+                    zRot = 90f;
+                    aspect = (float)Screen.height / Screen.width;
+                    scaleX = aspect;
+                    scaleY = aspect;
+                    break;
+                default:
+                    zRot = 0f;
+                    break;
             }
 
-            GL.End();
-            GL.PopMatrix();
+            // Flip for mirrored (front camera)
+            if (isMirrored) scaleX = -scaleX;
+
+            rt.localEulerAngles = new Vector3(0, 0, zRot);
+            rt.localScale = new Vector3(scaleX, scaleY, 1f);
         }
 
         private void OnDestroy()
@@ -211,10 +184,9 @@ namespace NomadGo.AppShell
                 webCamTexture.Stop();
                 webCamTexture = null;
             }
-            if (camMat != null)
+            if (cameraCanvas != null)
             {
-                Destroy(camMat);
-                camMat = null;
+                Destroy(cameraCanvas.gameObject);
             }
         }
     }
