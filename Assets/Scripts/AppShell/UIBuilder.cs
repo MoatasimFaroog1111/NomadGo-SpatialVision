@@ -106,17 +106,18 @@ namespace NomadGo.AppShell
             rt.anchorMin = new Vector2(0, 1);
             rt.anchorMax = new Vector2(1, 1);
             rt.pivot = new Vector2(0.5f, 1f);
-            rt.anchoredPosition = new Vector2(0, 0);
-            rt.sizeDelta = new Vector2(0, 70);
+            rt.anchoredPosition = new Vector2(0, -5);
+            rt.sizeDelta = new Vector2(0, 50);
 
+            // Fully transparent background - no pink bar!
             var bg = go.AddComponent<Image>();
-            bg.color = new Color(0, 0, 0, 0.55f);
+            bg.color = new Color(0, 0, 0, 0f);
             bg.raycastTarget = false;
 
             var txt = go.AddComponent<TextMeshProUGUI>();
             txt.text = "NomadGo Ready";
-            txt.fontSize = 26;
-            txt.color = Color.white;
+            txt.fontSize = 22;
+            txt.color = new Color(1f, 1f, 1f, 0.9f);
             txt.alignment = TextAlignmentOptions.Center;
             txt.raycastTarget = false;
 

@@ -6,6 +6,7 @@ namespace NomadGo.AppShell
     /// <summary>
     /// Renders the back camera as a full-screen background using GL.DrawTexture in OnPostRender.
     /// Tested on Moto G84 5G (Android 15, portrait mode).
+    /// v2: Fixed upside-down image by correcting UV coordinates for rotAngle=90.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class CameraFix : MonoBehaviour
@@ -113,29 +114,28 @@ namespace NomadGo.AppShell
             camMat.SetPass(0);
 
             // GL coordinate system: (0,0) = bottom-left, (1,1) = top-right
-            // WebCamTexture UV: (0,0) = bottom-left of raw frame
+            // WebCamTexture on Android:
+            //   videoRotationAngle = 90 means the sensor is rotated 90° CW
+            //   To display correctly, we rotate the UV 90° CCW
             //
-            // Moto G84 5G in portrait mode:
-            //   videoRotationAngle = 90 (rotate CCW 90° to get upright image)
-            //   videoVerticallyMirrored = false (back camera, not mirrored)
-            //
-            // For rotAngle=90 (need to rotate texture 90° CCW):
-            //   bottom-left of screen  → top-left of texture    (0,1)
-            //   bottom-right of screen → bottom-left of texture  (0,0)
-            //   top-right of screen    → bottom-right of texture (1,0)
-            //   top-left of screen     → top-right of texture    (1,1)
+            // Moto G84 5G portrait: rotAngle=90, mirror=false
+            // Correct UV mapping for rotAngle=90 (verified):
+            //   screen bottom-left  (0,0) → UV (1,0)
+            //   screen bottom-right (1,0) → UV (1,1)
+            //   screen top-right    (1,1) → UV (0,1)
+            //   screen top-left     (0,1) → UV (0,0)
 
             GL.Begin(GL.QUADS);
 
             if (rotAngle == 0)
             {
-                // No rotation
                 if (isMirrored)
                 {
-                    GL.TexCoord2(0, 1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(0, 1, 0);
+                    // Mirrored horizontally
+                    GL.TexCoord2(1, 0); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(0, 0); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(0, 1); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(1, 1); GL.Vertex3(0, 1, 0);
                 }
                 else
                 {
@@ -147,7 +147,42 @@ namespace NomadGo.AppShell
             }
             else if (rotAngle == 90)
             {
-                // Rotate 90° CCW (standard Android portrait back camera)
+                // Rotate 90° CW sensor → display 90° CCW correction
+                if (isMirrored)
+                {
+                    GL.TexCoord2(0, 0); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(0, 1); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(1, 1); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(1, 0); GL.Vertex3(0, 1, 0);
+                }
+                else
+                {
+                    // Standard back camera on Moto G84 portrait
+                    GL.TexCoord2(1, 0); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(1, 1); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(0, 1); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(0, 0); GL.Vertex3(0, 1, 0);
+                }
+            }
+            else if (rotAngle == 180)
+            {
+                if (isMirrored)
+                {
+                    GL.TexCoord2(0, 1); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(1, 1); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(1, 0); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(0, 0); GL.Vertex3(0, 1, 0);
+                }
+                else
+                {
+                    GL.TexCoord2(1, 1); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(0, 1); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(0, 0); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(1, 0); GL.Vertex3(0, 1, 0);
+                }
+            }
+            else // 270
+            {
                 if (isMirrored)
                 {
                     GL.TexCoord2(1, 1); GL.Vertex3(0, 0, 0);
@@ -161,42 +196,6 @@ namespace NomadGo.AppShell
                     GL.TexCoord2(0, 0); GL.Vertex3(1, 0, 0);
                     GL.TexCoord2(1, 0); GL.Vertex3(1, 1, 0);
                     GL.TexCoord2(1, 1); GL.Vertex3(0, 1, 0);
-                }
-            }
-            else if (rotAngle == 180)
-            {
-                // Rotate 180°
-                if (isMirrored)
-                {
-                    GL.TexCoord2(0, 0); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, 1); GL.Vertex3(0, 1, 0);
-                }
-                else
-                {
-                    GL.TexCoord2(1, 1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(0, 1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(0, 1, 0);
-                }
-            }
-            else // 270
-            {
-                // Rotate 270° CCW (= 90° CW)
-                if (isMirrored)
-                {
-                    GL.TexCoord2(0, 0); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(0, 1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(1, 0); GL.Vertex3(0, 1, 0);
-                }
-                else
-                {
-                    GL.TexCoord2(1, 0); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, 1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(0, 1); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, 0); GL.Vertex3(0, 1, 0);
                 }
             }
 
