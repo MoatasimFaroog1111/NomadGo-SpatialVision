@@ -1,6 +1,5 @@
 {
   "dependencies": {
-    "com.unity.sentis": "1.2.0",
     "com.unity.xr.arcore": "5.1.5",
     "com.unity.xr.arfoundation": "5.1.5",
     "com.unity.xr.management": "4.4.0",
