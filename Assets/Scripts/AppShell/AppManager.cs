@@ -120,7 +120,7 @@ namespace NomadGo.AppShell
                 {
                     show_fps_overlay = true,
                     log_inference_time = true,
-                    log_detection_results = false
+                    log_tracking_events = false
                 }
             };
         }
