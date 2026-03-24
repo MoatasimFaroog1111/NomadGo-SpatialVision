@@ -6,17 +6,21 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
 
-#if UNITY_SENTIS
-using Unity.Sentis;
+#if UNITY_BARRACUDA
+using Unity.Barracuda;
 #endif
 
 namespace NomadGo.Vision
 {
     /// <summary>
-    /// AI Inference Engine v3 — Unity Sentis 1.0.0 + YOLOv8n
+    /// AI Inference Engine v4 — Unity Barracuda 3.0.0 + YOLOv8n
     ///
-    /// Real AI: loads yolov8n.onnx from StreamingAssets, runs on GPU via Sentis.
+    /// Real AI: loads yolov8n.onnx from StreamingAssets, runs CPU inference via Barracuda.
     /// Detects 80 COCO classes (bottle, cup, food, grocery items, etc.)
+    ///
+    /// Barracuda converts ONNX NCHW tensors to NHWC internally.
+    /// YOLOv8n output (1,84,8400) NCHW → (1,1,8400,84) NHWC in Barracuda.
+    /// Access: output[0, 0, anchor, feature]
     ///
     /// Falls back to Demo mode if model/package unavailable.
     /// </summary>
@@ -30,14 +34,14 @@ namespace NomadGo.Vision
         private int      maxDetections        = 100;
         private string[] labels;
 
-        private bool  isLoaded       = false;
-        private bool  useDemoMode    = false;
+        private bool  isLoaded        = false;
+        private bool  useDemoMode     = false;
         private float lastInferenceMs = 0f;
 
-#if UNITY_SENTIS
-        private Model   sentisModel;
-        private IWorker sentisWorker;
-        private bool    sentisReady = false;
+#if UNITY_BARRACUDA
+        private Model   barracudaModel;
+        private IWorker barracudaWorker;
+        private bool    barracudaReady = false;
 #endif
 
         public bool  IsLoaded            => isLoaded;
@@ -60,10 +64,10 @@ namespace NomadGo.Vision
 
         public List<DetectionResult> RunInference(Texture2D frame)
         {
-#if UNITY_SENTIS
-            if (!useDemoMode && sentisReady && sentisWorker != null && frame != null)
+#if UNITY_BARRACUDA
+            if (!useDemoMode && barracudaReady && barracudaWorker != null && frame != null)
             {
-                try { return RunSentisInference(frame); }
+                try { return RunBarracudaInference(frame); }
                 catch (Exception ex)
                 {
                     Debug.LogError($"[ONNXEngine] Inference error: {ex.Message}");
@@ -71,8 +75,7 @@ namespace NomadGo.Vision
                 }
             }
 #endif
-            return useDemoMode || isLoaded ? GenerateDemoDetections()
-                                           : new List<DetectionResult>();
+            return isLoaded ? GenerateDemoDetections() : new List<DetectionResult>();
         }
 
         public string GetLabel(int classId)
@@ -97,7 +100,6 @@ namespace NomadGo.Vision
             }
             else
             {
-                // Full COCO 80 classes
                 labels = new[]
                 {
                     "person","bicycle","car","motorcycle","airplane","bus","train","truck","boat",
@@ -115,11 +117,11 @@ namespace NomadGo.Vision
             }
         }
 
-        // ── Model loading (async, Android-safe) ──────────────────────────────────
+        // ── Async model loading ───────────────────────────────────────────────────
 
         private IEnumerator LoadModelAsync()
         {
-#if UNITY_SENTIS
+#if UNITY_BARRACUDA
             string onnxPath = Path.Combine(Application.streamingAssetsPath, modelPath);
             Debug.Log($"[ONNXEngine] Loading: {onnxPath}");
 
@@ -147,23 +149,24 @@ namespace NomadGo.Vision
 #endif
             try
             {
-                sentisModel = ModelLoader.Load(bytes);
+                // Load ONNX via Barracuda (handles NCHW->NHWC conversion automatically)
+                barracudaModel  = ModelLoader.Load(bytes, verbose: false);
 
-                // Try GPU first, fall back to CPU
-                try   { sentisWorker = WorkerFactory.CreateWorker(BackendType.GPUCompute, sentisModel); }
-                catch { sentisWorker = WorkerFactory.CreateWorker(BackendType.CPU, sentisModel); }
+                // Use CSharpBurst (CPU) for Android compatibility
+                barracudaWorker = WorkerFactory.CreateWorker(
+                    WorkerFactory.Type.CSharpBurst, barracudaModel);
 
-                sentisReady = true;
-                isLoaded    = true;
-                Debug.Log($"[ONNXEngine] Real AI ready ({bytes.Length/1024/1024f:F1} MB). 80 COCO classes.");
+                barracudaReady = true;
+                isLoaded       = true;
+                Debug.Log($"[ONNXEngine] Barracuda model ready ({bytes.Length/1024/1024f:F1} MB). Real AI active.");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[ONNXEngine] Sentis init failed: {ex.Message} → DEMO mode.");
+                Debug.LogError($"[ONNXEngine] Barracuda init failed: {ex.Message} → DEMO mode.");
                 ActivateDemoMode();
             }
 #else
-            Debug.LogWarning("[ONNXEngine] UNITY_SENTIS not defined → DEMO mode.");
+            Debug.LogWarning("[ONNXEngine] UNITY_BARRACUDA not defined → DEMO mode.");
             ActivateDemoMode();
             yield return null;
 #endif
@@ -176,46 +179,36 @@ namespace NomadGo.Vision
             Debug.Log("[ONNXEngine] DEMO mode active.");
         }
 
-        // ── Sentis inference ─────────────────────────────────────────────────────
+        // ── Barracuda inference ──────────────────────────────────────────────────
 
-#if UNITY_SENTIS
-        private List<DetectionResult> RunSentisInference(Texture2D frame)
+#if UNITY_BARRACUDA
+        private List<DetectionResult> RunBarracudaInference(Texture2D frame)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
-            // 1. Preprocess → NCHW float32 [1, 3, 640, 640]
-            float[] ncnhw = TextureToNCHW(frame);
-            var inputTensor = new TensorFloat(new TensorShape(1, 3, inputHeight, inputWidth), ncnhw);
+            // Preprocess → NHWC float32 [1, 640, 640, 3] (Barracuda input format)
+            float[] nhwcData = TextureToNHWC(frame);
+            var inputTensor = new Tensor(new TensorShape(1, inputHeight, inputWidth, 3), nhwcData);
 
-            // 2. Run inference
-            sentisWorker.Execute(inputTensor);
+            // Execute
+            barracudaWorker.Execute(inputTensor);
             inputTensor.Dispose();
 
-            // 3. Read output (YOLOv8 output name: "output0", shape: [1, 84, 8400])
-            var rawOutput = sentisWorker.PeekOutput("output0") as TensorFloat;
-            if (rawOutput == null)
-            {
-                Debug.LogError("[ONNXEngine] 'output0' missing from model outputs.");
-                return GenerateDemoDetections();
-            }
-
-            rawOutput.MakeReadable();
-
-            // Read data using index operator (works in all Sentis 1.x versions)
-            int total = rawOutput.shape.length;
-            float[] data = new float[total];
-            for (int i = 0; i < total; i++) data[i] = rawOutput[i];
+            // Get output — YOLOv8 name: "output0"
+            // Barracuda converts NCHW (1,84,8400) → NHWC (1,1,8400,84)
+            Tensor output = barracudaWorker.PeekOutput("output0");
 
             sw.Stop();
             lastInferenceMs = (float)sw.Elapsed.TotalMilliseconds;
 
-            var detections = ParseYOLOv8(data);
+            var detections = ParseYOLOv8Barracuda(output);
+            output.Dispose();
+
             return ApplyNMS(detections).Take(maxDetections).ToList();
         }
 
-        private float[] TextureToNCHW(Texture2D src)
+        private float[] TextureToNHWC(Texture2D src)
         {
-            // Resize to 640×640
             var rt   = RenderTexture.GetTemporary(inputWidth, inputHeight, 0, RenderTextureFormat.ARGB32);
             Graphics.Blit(src, rt);
             var prev = RenderTexture.active;
@@ -229,28 +222,28 @@ namespace NomadGo.Vision
             Color32[] px = tex.GetPixels32();
             Destroy(tex);
 
-            int hw    = inputWidth * inputHeight;
-            float[] d = new float[3 * hw];
+            int hw     = inputWidth * inputHeight;
+            float[] d  = new float[hw * 3]; // NHWC: each pixel has 3 channels
 
             for (int i = 0; i < hw; i++)
             {
-                // Flip Y: Unity Y=0 is bottom; NCHW Y=0 is top
+                // Flip Y: Unity Y=0 is bottom; NHWC Y=0 is top
                 int row = inputHeight - 1 - (i / inputWidth);
                 int col = i % inputWidth;
                 int s   = row * inputWidth + col;
-                d[0 * hw + i] = px[s].r / 255f;
-                d[1 * hw + i] = px[s].g / 255f;
-                d[2 * hw + i] = px[s].b / 255f;
+                // NHWC: [n, h, w, c] → flat [h*W*C + w*C + c]
+                d[i * 3 + 0] = px[s].r / 255f;
+                d[i * 3 + 1] = px[s].g / 255f;
+                d[i * 3 + 2] = px[s].b / 255f;
             }
             return d;
         }
-#endif
 
-        // ── YOLOv8 output parser ─────────────────────────────────────────────────
-        //   Shape: [1, 84, 8400]  features = 0-3 (cx,cy,w,h px/640) + 4-83 (class scores)
-
-        private List<DetectionResult> ParseYOLOv8(float[] data)
+        private List<DetectionResult> ParseYOLOv8Barracuda(Tensor output)
         {
+            // Barracuda converts ONNX NCHW (1,84,8400) → NHWC (1,1,8400,84)
+            // Shape: N=1, H=1, W=8400, C=84
+            // Features: C 0-3 = cx,cy,w,h (in pixels for 640 input); C 4-83 = class scores
             const int numAnchors = 8400;
             int numClasses = labels != null ? Mathf.Min(labels.Length, 80) : 80;
             float sx = 1f / inputWidth;
@@ -260,18 +253,20 @@ namespace NomadGo.Vision
 
             for (int a = 0; a < numAnchors; a++)
             {
+                // Find max class confidence
                 float maxConf = 0f; int maxCls = 0;
                 for (int c = 0; c < numClasses; c++)
                 {
-                    float s = data[(4 + c) * numAnchors + a];
+                    // Barracuda NHWC indexer: output[batch, h, w, channel]
+                    float s = output[0, 0, a, 4 + c];
                     if (s > maxConf) { maxConf = s; maxCls = c; }
                 }
                 if (maxConf < confidenceThreshold) continue;
 
-                float cx = data[0 * numAnchors + a] * sx;
-                float cy = data[1 * numAnchors + a] * sy;
-                float bw = data[2 * numAnchors + a] * sx;
-                float bh = data[3 * numAnchors + a] * sy;
+                float cx = output[0, 0, a, 0] * sx;
+                float cy = output[0, 0, a, 1] * sy;
+                float bw = output[0, 0, a, 2] * sx;
+                float bh = output[0, 0, a, 3] * sy;
 
                 string lbl = (labels != null && maxCls < labels.Length) ? labels[maxCls] : $"cls{maxCls}";
                 results.Add(new DetectionResult(maxCls, lbl, maxConf,
@@ -280,6 +275,9 @@ namespace NomadGo.Vision
             }
             return results;
         }
+#endif
+
+        // ── NMS ──────────────────────────────────────────────────────────────────
 
         private List<DetectionResult> ApplyNMS(List<DetectionResult> dets)
         {
@@ -312,6 +310,7 @@ namespace NomadGo.Vision
             new Rect(0.10f,0.55f,0.22f,0.28f), new Rect(0.55f,0.55f,0.22f,0.28f),
             new Rect(0.33f,0.35f,0.20f,0.26f),
         };
+        // bottle=39, cup=41, bowl=45, apple=47, banana=46
         private static readonly int[] _demoClassIds = { 39, 41, 45, 47, 46 };
 
         private List<DetectionResult> GenerateDemoDetections()
@@ -326,7 +325,7 @@ namespace NomadGo.Vision
             for (int i = 0; i < _anchors.Length; i++)
             {
                 if (hideSet.Contains(i)) continue;
-                Rect a  = _anchors[i]; float j = 0.008f;
+                Rect a   = _anchors[i]; float j = 0.008f;
                 int  cls = i < _demoClassIds.Length ? _demoClassIds[i] : 39;
                 string lbl = (labels != null && cls < labels.Length) ? labels[cls] : "item";
                 res.Add(new DetectionResult(cls, lbl, 0.78f + UnityEngine.Random.value * 0.18f,
@@ -343,10 +342,10 @@ namespace NomadGo.Vision
 
         private void OnDestroy()
         {
-#if UNITY_SENTIS
-            sentisWorker?.Dispose();
-            sentisModel = null;
-            sentisReady = false;
+#if UNITY_BARRACUDA
+            barracudaWorker?.Dispose();
+            barracudaModel = null;
+            barracudaReady = false;
 #endif
         }
     }
