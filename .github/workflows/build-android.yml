@@ -47,6 +47,40 @@ jobs:
           PYEOF
           echo "ONNX model: $(ls -lh Assets/StreamingAssets/Models/yolov8n.onnx)"
 
+      - name: Add UNITY_SENTIS scripting define
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          path = 'ProjectSettings/ProjectSettings.asset'
+          content = open(path).read()
+
+          if 'UNITY_SENTIS' in content:
+              print('UNITY_SENTIS already present')
+          elif 'scriptingDefineSymbols: {}' in content:
+              lines = '\n'.join(f'    {p}: UNITY_SENTIS' for p in ['1','7','13','19','20'])
+              content = content.replace('scriptingDefineSymbols: {}',
+                                        f'scriptingDefineSymbols:\n{lines}')
+              open(path, 'w').write(content)
+              print('Added UNITY_SENTIS (was empty dict)')
+          else:
+              def add_define(m):
+                  v = m.group(2).strip()
+                  return m.group(1) + (f'{v};UNITY_SENTIS' if v else 'UNITY_SENTIS')
+              for p in ['1','7','13','19','20']:
+                  pattern = rf'(    {p}: )([^\n]*)'
+                  if re.search(pattern, content):
+                      content = re.sub(pattern, add_define, content)
+                  else:
+                      content = re.sub(r'(scriptingDefineSymbols:\n)',
+                                       rf'\g<1>    {p}: UNITY_SENTIS\n', content)
+              open(path, 'w').write(content)
+              print('Added UNITY_SENTIS to existing defines')
+
+          found = [l.strip() for l in open(path) if 'UNITY_SENTIS' in l]
+          print('Verified:', found[:4])
+          PYEOF
+
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
         with:
@@ -83,12 +117,12 @@ jobs:
         run: |
           APK=$(find build/Android -name "*.apk" | head -1)
           echo "Source APK: $APK ($(du -sh $APK | cut -f1))"
-          
+
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.keystore
           sudo apt-get install -y zipalign apksigner 2>/dev/null || true
-          
+
           python3 << 'PYEOF'
-          import zipfile, struct, os, glob
+          import zipfile, struct, glob
 
           apk = glob.glob('build/Android/*.apk')[0]
           print(f"Patching: {apk}")
@@ -100,8 +134,7 @@ jobs:
           for i in range(0, len(manifest)-8, 4):
               v = struct.unpack_from('<I', manifest, i)[0]
               if v == 0x00030000 and i >= 4:
-                  p = struct.unpack_from('<I', manifest, i-4)[0]
-                  if p == 0x11000008:
+                  if struct.unpack_from('<I', manifest, i-4)[0] == 0x11000008:
                       struct.pack_into('<I', manifest, i, 0x00020000)
                       patched += 1
                       print(f'  Patched glEsVersion at offset {i}')
@@ -111,25 +144,19 @@ jobs:
           with zipfile.ZipFile(apk, 'r') as zin:
               with zipfile.ZipFile('/tmp/patched.apk', 'w') as zout:
                   for item in zin.infolist():
-                      if item.filename == 'AndroidManifest.xml':
-                          zout.writestr(item, bytes(manifest))
-                      else:
-                          zout.writestr(item, zin.read(item.filename))
-          print('Repacked to /tmp/patched.apk')
+                      data = bytes(manifest) if item.filename == 'AndroidManifest.xml' else zin.read(item.filename)
+                      zout.writestr(item, data)
+          print('Done -> /tmp/patched.apk')
           PYEOF
 
-          zipalign -f -p 4 /tmp/patched.apk /tmp/aligned.apk && echo "Aligned OK" || cp /tmp/patched.apk /tmp/aligned.apk
-
+          zipalign -f -p 4 /tmp/patched.apk /tmp/aligned.apk && echo "Aligned" || cp /tmp/patched.apk /tmp/aligned.apk
           apksigner sign \
             --ks /tmp/release.keystore \
             --ks-pass "pass:${{ secrets.ANDROID_KEYSTORE_PASS }}" \
             --ks-key-alias "${{ secrets.ANDROID_KEYALIAS_NAME }}" \
             --key-pass "pass:${{ secrets.ANDROID_KEYALIAS_PASS }}" \
-            --out /tmp/final.apk \
-            /tmp/aligned.apk && echo "Signed OK" || cp /tmp/aligned.apk /tmp/final.apk
-
-          sudo cp /tmp/final.apk "$APK"
-          sudo chmod 644 "$APK"
+            --out /tmp/final.apk /tmp/aligned.apk && echo "Signed" || cp /tmp/aligned.apk /tmp/final.apk
+          sudo cp /tmp/final.apk "$APK" && sudo chmod 644 "$APK"
           apksigner verify "$APK" && echo "Verification PASSED" || echo "Verify warning"
           echo "Final: $(ls -lh $APK)"
 
@@ -146,14 +173,11 @@ jobs:
           tag_name: v${{ github.run_number }}
           name: "NomadGo SpatialVision v${{ github.run_number }}"
           body: |
-            ## NomadGo SpatialVision - Release Build
-            - YOLOv8n ONNX model included in StreamingAssets (ready for Sentis integration)
-            - AI demo mode: bottle, cup, bowl, apple, banana detection simulation
-            - Signed Release APK (arm64-v8a)
-            - Min SDK: Android 7.0 (API 24)
-            - Target SDK: Android 14 (API 34)
-            - Compatible with Moto G84 5G (Android 15)
-            - OpenGL ES 2.0 (patched for maximum compatibility)
+            ## NomadGo SpatialVision - Real AI Build
+            - Real AI inference: YOLOv8n via Unity Sentis 1.0.0
+            - Detects: bottle, cup, bowl, apple, banana, pizza, donut, cake, sandwich, and 70+ more classes
+            - Signed Release APK (arm64-v8a) | Min SDK: Android 7.0 | Target SDK: Android 14
+            - Compatible with Moto G84 5G (Android 15) | OpenGL ES 2.0 patched
           files: build/Android/*.apk
           draft: false
           prerelease: false
