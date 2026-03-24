@@ -4,9 +4,15 @@ using TMPro;
 
 namespace NomadGo.AppShell
 {
+    /// <summary>
+    /// FIXED: ScanUIController now works in two modes:
+    /// 1. Editor-wired mode (SerializeField references assigned in Inspector)
+    /// 2. Runtime auto-find mode (finds UI elements by name if not assigned)
+    /// This fixes the bug where all SerializeField references were null.
+    /// </summary>
     public class ScanUIController : MonoBehaviour
     {
-        [Header("UI Elements")]
+        [Header("UI Elements (assign in Inspector OR leave null for auto-find)")]
         [SerializeField] private Button startScanButton;
         [SerializeField] private Button stopScanButton;
         [SerializeField] private Button exportSessionButton;
@@ -18,6 +24,14 @@ namespace NomadGo.AppShell
 
         private void Start()
         {
+            // FIXED: Auto-find UI elements if not assigned in Inspector
+            if (startScanButton == null)
+                startScanButton = FindButtonByName("StartScanBtn");
+            if (stopScanButton == null)
+                stopScanButton = FindButtonByName("StopScanBtn");
+            if (exportSessionButton == null)
+                exportSessionButton = FindButtonByName("ExportBtn");
+
             if (startScanButton != null)
                 startScanButton.onClick.AddListener(OnStartScan);
 
@@ -28,6 +42,13 @@ namespace NomadGo.AppShell
                 exportSessionButton.onClick.AddListener(OnExportSession);
 
             SetScanState(false);
+        }
+
+        private Button FindButtonByName(string name)
+        {
+            var go = GameObject.Find(name);
+            if (go != null) return go.GetComponent<Button>();
+            return null;
         }
 
         private void OnStartScan()
@@ -45,9 +66,9 @@ namespace NomadGo.AppShell
 
         private void OnStopScan()
         {
-            if (AppManager.Instance == null) return;
+            if (AppManager.Instance != null)
+                AppManager.Instance.StopScan();
 
-            AppManager.Instance.StopScan();
             SetScanState(false);
             UpdateStatus("Scan stopped.");
         }
@@ -58,8 +79,10 @@ namespace NomadGo.AppShell
             if (storage != null)
             {
                 string path = storage.ExportCurrentSession();
-                UpdateStatus($"Session exported: {path}");
-                Debug.Log($"[ScanUI] Session exported to: {path}");
+                if (!string.IsNullOrEmpty(path))
+                    UpdateStatus($"Exported: {System.IO.Path.GetFileName(path)}");
+                else
+                    UpdateStatus("No active session to export.");
             }
         }
 
@@ -84,7 +107,6 @@ namespace NomadGo.AppShell
         {
             if (statusText != null)
                 statusText.text = message;
-
             Debug.Log($"[ScanUI] {message}");
         }
     }

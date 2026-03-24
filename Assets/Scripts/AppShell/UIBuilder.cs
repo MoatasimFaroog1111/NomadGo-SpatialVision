@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -6,16 +7,20 @@ using TMPro;
 namespace NomadGo.AppShell
 {
     /// <summary>
-    /// Builds the entire UI at runtime.
-    /// Buttons: Start Scan (green), Stop Scan (red), Export (blue).
-    /// Status bar at top with semi-transparent background.
+    /// FIXED: Builds entire UI at runtime.
+    /// Buttons: Start Scan, Stop Scan, Export, Reports.
+    /// Added: Reports panel with session history.
+    /// Fixed: Canvas sorting, EventSystem safety, button anchors.
     /// </summary>
     public class UIBuilder : MonoBehaviour
     {
         private Button startBtn;
         private Button stopBtn;
         private Button exportBtn;
+        private Button reportsBtn;
         private TextMeshProUGUI statusTxt;
+        private GameObject reportsPanel;
+        private TextMeshProUGUI reportsTxt;
         private bool isScanning = false;
 
         private void Start()
@@ -41,65 +46,145 @@ namespace NomadGo.AppShell
             canvasGO.AddComponent<GraphicRaycaster>();
 
             // ── EventSystem ──────────────────────────────────────────────────────
-            if (FindObjectOfType<UnityEngine.EventSystems.EventSystem>() == null)
+            // FIXED: Use FindObjectsOfType to avoid duplicate EventSystems
+            var existingSystems = FindObjectsOfType<UnityEngine.EventSystems.EventSystem>();
+            if (existingSystems == null || existingSystems.Length == 0)
             {
                 var esGO = new GameObject("EventSystem");
+                DontDestroyOnLoad(esGO);
                 esGO.AddComponent<UnityEngine.EventSystems.EventSystem>();
                 esGO.AddComponent<UnityEngine.EventSystems.StandaloneInputModule>();
             }
 
             var root = canvasGO.transform;
 
-            // ── Status bar (top, semi-transparent dark background) ───────────────
-            var statusGO = new GameObject("StatusBar");
-            statusGO.transform.SetParent(root, false);
-            var statusRT = statusGO.AddComponent<RectTransform>();
-            statusRT.anchorMin = new Vector2(0, 1);
-            statusRT.anchorMax = new Vector2(1, 1);
-            statusRT.pivot = new Vector2(0.5f, 1f);
-            statusRT.anchoredPosition = new Vector2(0, 0);
-            statusRT.sizeDelta = new Vector2(0, 70);
+            // ── Status bar ────────────────────────────────────────────────────
+            statusTxt = MakeStatusBar(root);
 
-            var statusBg = statusGO.AddComponent<Image>();
-            statusBg.color = new Color(0, 0, 0, 0.55f);
-            statusBg.raycastTarget = false;
-
-            statusTxt = statusGO.AddComponent<TextMeshProUGUI>();
-            statusTxt.text = "NomadGo Ready";
-            statusTxt.fontSize = 26;
-            statusTxt.color = Color.white;
-            statusTxt.alignment = TextAlignmentOptions.Center;
-            statusTxt.raycastTarget = false;
-
-            // ── Start Scan button (bottom center, green) ─────────────────────────
-            startBtn = MakeButton(root, "StartScanBtn", "▶  Start Scan",
+            // ── Start Scan button ─────────────────────────────────────────────
+            startBtn = MakeButton(root, "StartScanBtn", "\u25B6  Start Scan",
                 new Color32(20, 160, 20, 220),
-                anchorMin: new Vector2(0.1f, 0f),
-                anchorMax: new Vector2(0.9f, 0f),
-                anchoredPos: new Vector2(0, 80),
-                size: new Vector2(0, 110));
+                new Vector2(0.05f, 0f), new Vector2(0.95f, 0f),
+                new Vector2(0, 80), new Vector2(0, 110));
             startBtn.onClick.AddListener(OnStartScan);
 
-            // ── Stop Scan button (same position, red) — hidden initially ─────────
-            stopBtn = MakeButton(root, "StopScanBtn", "■  Stop Scan",
+            // ── Stop Scan button ──────────────────────────────────────────────
+            stopBtn = MakeButton(root, "StopScanBtn", "\u25A0  Stop Scan",
                 new Color32(200, 30, 30, 220),
-                anchorMin: new Vector2(0.1f, 0f),
-                anchorMax: new Vector2(0.9f, 0f),
-                anchoredPos: new Vector2(0, 80),
-                size: new Vector2(0, 110));
+                new Vector2(0.05f, 0f), new Vector2(0.95f, 0f),
+                new Vector2(0, 80), new Vector2(0, 110));
             stopBtn.onClick.AddListener(OnStopScan);
             stopBtn.gameObject.SetActive(false);
 
-            // ── Export button (bottom right, blue) ──────────────────────────────
+            // ── Export button ─────────────────────────────────────────────────
             exportBtn = MakeButton(root, "ExportBtn", "Export",
                 new Color32(30, 80, 200, 220),
-                anchorMin: new Vector2(0.65f, 0f),
-                anchorMax: new Vector2(0.95f, 0f),
-                anchoredPos: new Vector2(0, 210),
-                size: new Vector2(0, 80));
+                new Vector2(0.05f, 0f), new Vector2(0.48f, 0f),
+                new Vector2(0, 210), new Vector2(0, 80));
             exportBtn.onClick.AddListener(OnExport);
 
-            Debug.Log("[UIBuilder] UI built successfully.");
+            // ── Reports button ────────────────────────────────────────────────
+            reportsBtn = MakeButton(root, "ReportsBtn", "Reports",
+                new Color32(120, 40, 160, 220),
+                new Vector2(0.52f, 0f), new Vector2(0.95f, 0f),
+                new Vector2(0, 210), new Vector2(0, 80));
+            reportsBtn.onClick.AddListener(OnToggleReports);
+
+            // ── Reports Panel ─────────────────────────────────────────────────
+            reportsPanel = BuildReportsPanel(root);
+            reportsPanel.SetActive(false);
+
+            Debug.Log("[UIBuilder] UI built successfully with Reports panel.");
+        }
+
+        private TextMeshProUGUI MakeStatusBar(Transform root)
+        {
+            var go = new GameObject("StatusBar");
+            go.transform.SetParent(root, false);
+
+            var rt = go.AddComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0, 1);
+            rt.anchorMax = new Vector2(1, 1);
+            rt.pivot = new Vector2(0.5f, 1f);
+            rt.anchoredPosition = new Vector2(0, 0);
+            rt.sizeDelta = new Vector2(0, 70);
+
+            var bg = go.AddComponent<Image>();
+            bg.color = new Color(0, 0, 0, 0.55f);
+            bg.raycastTarget = false;
+
+            var txt = go.AddComponent<TextMeshProUGUI>();
+            txt.text = "NomadGo Ready";
+            txt.fontSize = 26;
+            txt.color = Color.white;
+            txt.alignment = TextAlignmentOptions.Center;
+            txt.raycastTarget = false;
+
+            return txt;
+        }
+
+        private GameObject BuildReportsPanel(Transform root)
+        {
+            var panelGO = new GameObject("ReportsPanel");
+            panelGO.transform.SetParent(root, false);
+
+            var rt = panelGO.AddComponent<RectTransform>();
+            rt.anchorMin = new Vector2(0, 0);
+            rt.anchorMax = new Vector2(1, 1);
+            rt.offsetMin = new Vector2(20, 310);
+            rt.offsetMax = new Vector2(-20, -80);
+
+            var bg = panelGO.AddComponent<Image>();
+            bg.color = new Color(0, 0, 0, 0.85f);
+
+            // Title
+            var titleGO = new GameObject("Title");
+            titleGO.transform.SetParent(panelGO.transform, false);
+            var titleRT = titleGO.AddComponent<RectTransform>();
+            titleRT.anchorMin = new Vector2(0, 1);
+            titleRT.anchorMax = new Vector2(1, 1);
+            titleRT.pivot = new Vector2(0.5f, 1f);
+            titleRT.anchoredPosition = Vector2.zero;
+            titleRT.sizeDelta = new Vector2(0, 60);
+            var titleTxt = titleGO.AddComponent<TextMeshProUGUI>();
+            titleTxt.text = "SESSION REPORTS";
+            titleTxt.fontSize = 32;
+            titleTxt.color = Color.cyan;
+            titleTxt.alignment = TextAlignmentOptions.Center;
+            titleTxt.fontStyle = FontStyles.Bold;
+            titleTxt.raycastTarget = false;
+
+            // Content
+            var contentGO = new GameObject("Content");
+            contentGO.transform.SetParent(panelGO.transform, false);
+            var contentRT = contentGO.AddComponent<RectTransform>();
+            contentRT.anchorMin = new Vector2(0, 0);
+            contentRT.anchorMax = new Vector2(1, 1);
+            contentRT.offsetMin = new Vector2(10, 10);
+            contentRT.offsetMax = new Vector2(-10, -65);
+
+            reportsTxt = contentGO.AddComponent<TextMeshProUGUI>();
+            reportsTxt.text = "No sessions recorded yet.\nStart a scan to create a report.";
+            reportsTxt.fontSize = 22;
+            reportsTxt.color = Color.white;
+            reportsTxt.alignment = TextAlignmentOptions.TopLeft;
+            reportsTxt.raycastTarget = false;
+
+            // Close button
+            var closeBtn = MakeButton(panelGO.transform, "CloseReportsBtn", "X Close",
+                new Color32(180, 60, 60, 220),
+                new Vector2(0.7f, 0f), new Vector2(1f, 0f),
+                new Vector2(0, 5), new Vector2(0, 55));
+            closeBtn.onClick.AddListener(() => reportsPanel.SetActive(false));
+
+            // Refresh button
+            var refreshBtn = MakeButton(panelGO.transform, "RefreshReportsBtn", "Refresh",
+                new Color32(60, 120, 180, 220),
+                new Vector2(0f, 0f), new Vector2(0.65f, 0f),
+                new Vector2(0, 5), new Vector2(0, 55));
+            refreshBtn.onClick.AddListener(RefreshReports);
+
+            return panelGO;
         }
 
         // ── Button callbacks ─────────────────────────────────────────────────────
@@ -109,15 +194,13 @@ namespace NomadGo.AppShell
             isScanning = true;
             startBtn.gameObject.SetActive(false);
             stopBtn.gameObject.SetActive(true);
-            SetStatus("Scanning... (YOLO active)");
+            reportsPanel.SetActive(false);
+            SetStatus("Scanning... (Camera active)");
 
             if (AppManager.Instance != null)
-            {
                 AppManager.Instance.StartScan();
-            }
             else
             {
-                // Fallback: find FrameProcessor directly
                 var fp = FindObjectOfType<Vision.FrameProcessor>();
                 if (fp != null) fp.StartProcessing();
                 else Debug.LogWarning("[UIBuilder] FrameProcessor not found.");
@@ -129,7 +212,7 @@ namespace NomadGo.AppShell
             isScanning = false;
             startBtn.gameObject.SetActive(true);
             stopBtn.gameObject.SetActive(false);
-            SetStatus("Scan stopped.");
+            SetStatus("Scan stopped. Check Reports for results.");
 
             if (AppManager.Instance != null)
                 AppManager.Instance.StopScan();
@@ -146,12 +229,73 @@ namespace NomadGo.AppShell
             if (storage != null)
             {
                 string path = storage.ExportCurrentSession();
-                SetStatus($"Exported: {System.IO.Path.GetFileName(path)}");
+                if (!string.IsNullOrEmpty(path))
+                    SetStatus($"Exported: {System.IO.Path.GetFileName(path)}");
+                else
+                    SetStatus("No active session to export.");
             }
             else
             {
-                SetStatus("No session data to export.");
+                SetStatus("Storage not available.");
             }
+        }
+
+        private void OnToggleReports()
+        {
+            bool show = !reportsPanel.activeSelf;
+            reportsPanel.SetActive(show);
+            if (show) RefreshReports();
+        }
+
+        private void RefreshReports()
+        {
+            var storage = FindObjectOfType<Storage.SessionStorage>();
+            if (storage == null)
+            {
+                if (reportsTxt != null)
+                    reportsTxt.text = "Storage system not available.";
+                return;
+            }
+
+            string[] sessionIds = storage.GetAllSessionIds();
+
+            if (sessionIds == null || sessionIds.Length == 0)
+            {
+                if (reportsTxt != null)
+                    reportsTxt.text = "No sessions recorded yet.\nStart a scan to create a report.";
+                return;
+            }
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"Total Sessions: {sessionIds.Length}\n");
+
+            // Show last 5 sessions
+            int start = Mathf.Max(0, sessionIds.Length - 5);
+            for (int i = sessionIds.Length - 1; i >= start; i--)
+            {
+                var session = storage.LoadSession(sessionIds[i]);
+                if (session != null)
+                {
+                    sb.AppendLine($"Session: {session.sessionId}");
+                    sb.AppendLine($"  Start: {session.startTime}");
+                    if (!string.IsNullOrEmpty(session.endTime))
+                        sb.AppendLine($"  End:   {session.endTime}");
+                    sb.AppendLine($"  Items Counted: {session.totalItemsCounted}");
+                    sb.AppendLine($"  Snapshots: {session.snapshots?.Count ?? 0}");
+                    sb.AppendLine();
+                }
+            }
+
+            // Also show current session if active
+            if (storage.IsSessionActive && storage.CurrentSession != null)
+            {
+                var cur = storage.CurrentSession;
+                sb.Insert(0, $"[CURRENT SESSION: {cur.sessionId}]\n" +
+                             $"  Items: {cur.totalItemsCounted}, Snapshots: {cur.snapshots?.Count ?? 0}\n\n");
+            }
+
+            if (reportsTxt != null)
+                reportsTxt.text = sb.ToString();
         }
 
         private void SetStatus(string msg)
@@ -159,7 +303,7 @@ namespace NomadGo.AppShell
             if (statusTxt != null) statusTxt.text = msg;
         }
 
-        // ── Helper ───────────────────────────────────────────────────────────────
+        // ── Helper: make a button ─────────────────────────────────────────────
 
         private Button MakeButton(Transform parent, string name, string label, Color32 color,
             Vector2 anchorMin, Vector2 anchorMax, Vector2 anchoredPos, Vector2 size)
@@ -177,18 +321,20 @@ namespace NomadGo.AppShell
             var img = go.AddComponent<Image>();
             img.color = color;
 
-            // Rounded look via sprite (optional — works without)
             var btn = go.AddComponent<Button>();
             var cols = btn.colors;
             cols.normalColor = color;
-            Color hc = color; hc.r = Mathf.Min(1f, color.r + 0.15f); hc.g = Mathf.Min(1f, color.g + 0.15f); hc.b = Mathf.Min(1f, color.b + 0.15f);
+            Color hc = color;
+            hc.r = Mathf.Min(1f, color.r + 0.15f);
+            hc.g = Mathf.Min(1f, color.g + 0.15f);
+            hc.b = Mathf.Min(1f, color.b + 0.15f);
             cols.highlightedColor = hc;
-            Color pc = color; pc.r *= 0.7f; pc.g *= 0.7f; pc.b *= 0.7f;
+            Color pc = color;
+            pc.r *= 0.7f; pc.g *= 0.7f; pc.b *= 0.7f;
             cols.pressedColor = pc;
             btn.colors = cols;
             btn.targetGraphic = img;
 
-            // Label
             var lblGO = new GameObject("Label");
             lblGO.transform.SetParent(go.transform, false);
             var lblRT = lblGO.AddComponent<RectTransform>();
@@ -199,7 +345,7 @@ namespace NomadGo.AppShell
 
             var tmp = lblGO.AddComponent<TextMeshProUGUI>();
             tmp.text = label;
-            tmp.fontSize = 40;
+            tmp.fontSize = 36;
             tmp.color = Color.white;
             tmp.alignment = TextAlignmentOptions.Center;
             tmp.fontStyle = FontStyles.Bold;

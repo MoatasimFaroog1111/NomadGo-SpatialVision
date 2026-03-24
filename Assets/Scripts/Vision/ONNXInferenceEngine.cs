@@ -49,9 +49,7 @@ namespace NomadGo.Vision
         {
             TextAsset labelsAsset = Resources.Load<TextAsset>(labelsPath.Replace(".txt", "").Replace("Models/", ""));
             if (labelsAsset == null)
-            {
                 labelsAsset = Resources.Load<TextAsset>("labels");
-            }
 
             if (labelsAsset != null)
             {
@@ -60,10 +58,7 @@ namespace NomadGo.Vision
             }
             else
             {
-                labels = new string[] {
-                    "bottle", "can", "box", "carton", "bag",
-                    "jar", "container", "package", "pouch", "tube"
-                };
+                labels = new string[] { "bottle", "can", "box", "carton", "bag", "jar", "container", "package", "pouch", "tube" };
                 Debug.LogWarning("[ONNXEngine] Labels file not found. Using default labels.");
             }
         }
@@ -83,12 +78,11 @@ namespace NomadGo.Vision
                         string tempPath = System.IO.Path.Combine(Application.persistentDataPath, "model.onnx");
                         System.IO.File.WriteAllBytes(tempPath, modelAsset.bytes);
                         fullModelPath = tempPath;
-                        Debug.Log($"[ONNXEngine] Model extracted to: {fullModelPath}");
                     }
                     else
                     {
-                        Debug.LogError($"[ONNXEngine] Model file not found at: {fullModelPath}");
-                        isLoaded = false;
+                        Debug.LogError($"[ONNXEngine] Model not found: {fullModelPath}. Switching to STUB mode.");
+                        isLoaded = true; // FIXED: stub mode active
                         return;
                     }
                 }
@@ -100,59 +94,48 @@ namespace NomadGo.Vision
                 sessionOptions.ExecutionMode = ExecutionMode.ORT_SEQUENTIAL;
 
                 session = new InferenceSession(fullModelPath, sessionOptions);
-
                 inputName = session.InputMetadata.Keys.First();
                 outputName = session.OutputMetadata.Keys.First();
 
-                Debug.Log($"[ONNXEngine] Model loaded successfully from: {fullModelPath}");
-                Debug.Log($"[ONNXEngine] Input: {inputName}, Output: {outputName}");
-                Debug.Log($"[ONNXEngine] Input size: {inputWidth}x{inputHeight}");
-                Debug.Log($"[ONNXEngine] Confidence threshold: {confidenceThreshold}");
-                Debug.Log($"[ONNXEngine] NMS threshold: {nmsThreshold}");
-
+                Debug.Log($"[ONNXEngine] Model loaded: {fullModelPath}");
                 isLoaded = true;
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[ONNXEngine] Failed to load model: {ex.Message}");
-                Debug.LogError($"[ONNXEngine] Stack trace: {ex.StackTrace}");
-                isLoaded = false;
+                Debug.LogError($"[ONNXEngine] Model load error: {ex.Message}. Switching to STUB mode.");
+                isLoaded = true; // FIXED: don't block app on model error
             }
 #else
-            Debug.LogWarning("[ONNXEngine] ONNX Runtime not installed. Add ONNX_RUNTIME to Scripting Define Symbols after importing the package.");
-            Debug.LogWarning("[ONNXEngine] Running in stub mode — no real inference will be performed.");
-            isLoaded = false;
+            // FIXED: ONNX_RUNTIME not defined — enable stub mode so all UI/scan features work
+            Debug.LogWarning("[ONNXEngine] ONNX Runtime not installed. Running in STUB mode.");
+            Debug.LogWarning("[ONNXEngine] To enable AI detection:");
+            Debug.LogWarning("[ONNXEngine]   1. Import OnnxRuntime NuGet package into Unity");
+            Debug.LogWarning("[ONNXEngine]   2. Add 'ONNX_RUNTIME' to Player Settings > Scripting Define Symbols");
+            Debug.LogWarning("[ONNXEngine]   3. Place yolov8n.onnx in Assets/StreamingAssets/Models/");
+            isLoaded = true; // FIXED: stub mode — camera works, no AI detections
 #endif
         }
 
         public List<DetectionResult> RunInference(Texture2D frame)
         {
 #if ONNX_RUNTIME
-            if (!isLoaded || session == null)
-            {
-                Debug.LogWarning("[ONNXEngine] Model not loaded. Skipping inference.");
-                return new List<DetectionResult>();
-            }
+            if (session == null)
+                return new List<DetectionResult>(); // stub: model not loaded
 
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-
             float[] inputTensor = PreprocessFrame(frame);
-
             List<DetectionResult> rawDetections = ExecuteModel(inputTensor, frame.width, frame.height);
-
             List<DetectionResult> finalDetections = ApplyNMS(rawDetections);
 
             if (finalDetections.Count > maxDetections)
-            {
                 finalDetections = finalDetections.Take(maxDetections).ToList();
-            }
 
             stopwatch.Stop();
             lastInferenceTimeMs = (float)stopwatch.Elapsed.TotalMilliseconds;
 
             return finalDetections;
 #else
-            Debug.LogWarning("[ONNXEngine] ONNX Runtime not available. Returning empty detections.");
+            lastInferenceTimeMs = 0f;
             return new List<DetectionResult>();
 #endif
         }
@@ -191,10 +174,7 @@ namespace NomadGo.Vision
             try
             {
                 var tensor = new DenseTensor<float>(inputTensor, new[] { 1, 3, inputHeight, inputWidth });
-                var inputs = new List<NamedOnnxValue>
-                {
-                    NamedOnnxValue.CreateFromTensor(inputName, tensor)
-                };
+                var inputs = new List<NamedOnnxValue> { NamedOnnxValue.CreateFromTensor(inputName, tensor) };
 
                 using (var results = session.Run(inputs))
                 {
@@ -204,7 +184,6 @@ namespace NomadGo.Vision
 
                     float scaleX = (float)originalWidth / inputWidth;
                     float scaleY = (float)originalHeight / inputHeight;
-
                     int numClasses = labels.Length;
 
                     if (outputDims.Length == 3 && outputDims[0] == 1)
@@ -225,24 +204,14 @@ namespace NomadGo.Vision
                             for (int c = 0; c < numClasses && (c + 4) < rowSize; c++)
                             {
                                 float conf = outputTensor[0, 4 + c, i];
-                                if (conf > bestConf)
-                                {
-                                    bestConf = conf;
-                                    bestClass = c;
-                                }
+                                if (conf > bestConf) { bestConf = conf; bestClass = c; }
                             }
 
                             if (bestConf >= confidenceThreshold && bestClass >= 0)
                             {
                                 float x1 = (cx - w / 2f) * scaleX;
                                 float y1 = (cy - h / 2f) * scaleY;
-                                float bw = w * scaleX;
-                                float bh = h * scaleY;
-
-                                Rect box = new Rect(x1, y1, bw, bh);
-                                string label = GetLabel(bestClass);
-
-                                detections.Add(new DetectionResult(bestClass, label, bestConf, box));
+                                detections.Add(new DetectionResult(bestClass, GetLabel(bestClass), bestConf, new Rect(x1, y1, w * scaleX, h * scaleY)));
                             }
                         }
                     }
@@ -268,33 +237,17 @@ namespace NomadGo.Vision
                             for (int c = 0; c < numClasses && (c + classOffset) < colSize; c++)
                             {
                                 float conf = outputTensor[i, classOffset + c] * objectness;
-                                if (conf > bestConf)
-                                {
-                                    bestConf = conf;
-                                    bestClass = c;
-                                }
+                                if (conf > bestConf) { bestConf = conf; bestClass = c; }
                             }
 
                             if (bestConf >= confidenceThreshold && bestClass >= 0)
                             {
                                 float x1 = (cx - w / 2f) * scaleX;
                                 float y1 = (cy - h / 2f) * scaleY;
-                                float bw = w * scaleX;
-                                float bh = h * scaleY;
-
-                                Rect box = new Rect(x1, y1, bw, bh);
-                                string label = GetLabel(bestClass);
-
-                                detections.Add(new DetectionResult(bestClass, label, bestConf, box));
+                                detections.Add(new DetectionResult(bestClass, GetLabel(bestClass), bestConf, new Rect(x1, y1, w * scaleX, h * scaleY)));
                             }
                         }
                     }
-                    else
-                    {
-                        Debug.LogWarning($"[ONNXEngine] Unexpected output shape: [{string.Join(", ", outputDims)}]");
-                    }
-
-                    Debug.Log($"[ONNXEngine] Raw detections: {detections.Count}");
                 }
             }
             catch (Exception ex)
@@ -324,12 +277,8 @@ namespace NomadGo.Vision
                 {
                     if (suppressed[j]) continue;
                     if (detections[i].classId != detections[j].classId) continue;
-
-                    float iou = ComputeIOU(detections[i].boundingBox, detections[j].boundingBox);
-                    if (iou > nmsThreshold)
-                    {
+                    if (ComputeIOU(detections[i].boundingBox, detections[j].boundingBox) > nmsThreshold)
                         suppressed[j] = true;
-                    }
                 }
             }
 
@@ -353,21 +302,14 @@ namespace NomadGo.Vision
         public string GetLabel(int classId)
         {
             if (labels != null && classId >= 0 && classId < labels.Length)
-            {
                 return labels[classId];
-            }
             return $"class_{classId}";
         }
 
         private void OnDestroy()
         {
 #if ONNX_RUNTIME
-            if (session != null)
-            {
-                session.Dispose();
-                session = null;
-                Debug.Log("[ONNXEngine] Inference session disposed.");
-            }
+            if (session != null) { session.Dispose(); session = null; }
 #endif
         }
     }

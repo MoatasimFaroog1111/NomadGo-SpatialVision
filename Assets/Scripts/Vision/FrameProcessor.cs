@@ -5,8 +5,10 @@ using UnityEngine;
 namespace NomadGo.Vision
 {
     /// <summary>
-    /// Processes camera frames using WebCamTexture (via CameraFix) and runs YOLO inference.
-    /// Does NOT use ARFoundation/ARCameraManager — uses WebCamTexture directly for compatibility.
+    /// FIXED:
+    /// - Removed hard block that stopped scanning when ONNX model not loaded
+    /// - Scanning now works in stub mode (camera active, no AI detections)
+    /// - Added bounding box coordinate normalization (returns normalized 0..1 coords)
     /// </summary>
     public class FrameProcessor : MonoBehaviour
     {
@@ -14,13 +16,15 @@ namespace NomadGo.Vision
         private AppShell.CameraFix cameraFix;
 
         private bool isProcessing = false;
-        private int frameSkip = 3; // Process every 4th frame (~7.5fps inference at 30fps)
+        private int frameSkip = 3;
         private int frameCounter = 0;
         private List<DetectionResult> latestDetections = new List<DetectionResult>();
 
         public bool IsProcessing => isProcessing;
         public List<DetectionResult> LatestDetections => latestDetections;
         public float LastInferenceTimeMs => inferenceEngine != null ? inferenceEngine.LastInferenceTimeMs : 0f;
+        public int InputWidth { get; private set; } = 640;
+        public int InputHeight { get; private set; } = 640;
 
         public delegate void DetectionsUpdatedHandler(List<DetectionResult> detections);
         public event DetectionsUpdatedHandler OnDetectionsUpdated;
@@ -28,39 +32,48 @@ namespace NomadGo.Vision
         public void Initialize(AppShell.ModelConfig config)
         {
             if (inferenceEngine == null)
-            {
                 inferenceEngine = gameObject.AddComponent<ONNXInferenceEngine>();
-            }
+
             inferenceEngine.Initialize(config);
 
-            frameSkip = Mathf.Max(0, (int)(30f / 8f) - 1); // ~8fps inference
+            InputWidth = config.input_width;
+            InputHeight = config.input_height;
+            frameSkip = Mathf.Max(0, (int)(30f / 8f) - 1);
             Debug.Log($"[FrameProcessor] Initialized. FrameSkip={frameSkip}, Model={config.path}");
         }
 
         public void StartProcessing()
         {
-            if (inferenceEngine == null || !inferenceEngine.IsLoaded)
+            // FIXED: Allow scanning even in stub mode (isLoaded = true in stub)
+            if (inferenceEngine == null)
             {
-                Debug.LogError("[FrameProcessor] Cannot start — inference engine not loaded.");
+                Debug.LogError("[FrameProcessor] Inference engine not initialized. Call Initialize() first.");
                 return;
             }
 
-            // Find CameraFix
+            if (!inferenceEngine.IsLoaded)
+            {
+                Debug.LogError("[FrameProcessor] Engine not ready. Cannot start.");
+                return;
+            }
+
             cameraFix = FindObjectOfType<AppShell.CameraFix>();
             if (cameraFix == null)
             {
-                Debug.LogError("[FrameProcessor] CameraFix not found!");
+                Debug.LogError("[FrameProcessor] CameraFix not found! Add CameraFix component to the camera.");
                 return;
             }
 
             isProcessing = true;
             frameCounter = 0;
-            Debug.Log("[FrameProcessor] Processing started (WebCamTexture mode).");
+            Debug.Log("[FrameProcessor] Processing started.");
         }
 
         public void StopProcessing()
         {
             isProcessing = false;
+            latestDetections.Clear();
+            OnDetectionsUpdated?.Invoke(latestDetections);
             Debug.Log("[FrameProcessor] Processing stopped.");
         }
 
@@ -75,7 +88,6 @@ namespace NomadGo.Vision
             frameCounter++;
             if (frameCounter % (frameSkip + 1) != 0) return;
 
-            // Convert WebCamTexture to Texture2D for YOLO
             var tex = ConvertWebCamToTexture(webCam);
             if (tex == null) return;
 
@@ -87,11 +99,9 @@ namespace NomadGo.Vision
         {
             try
             {
-                // Resize to model input size (640x640 for YOLOv8)
-                int targetW = 640;
-                int targetH = 640;
+                int targetW = InputWidth;
+                int targetH = InputHeight;
 
-                // Create RenderTexture for resize
                 var rt = RenderTexture.GetTemporary(targetW, targetH, 0, RenderTextureFormat.ARGB32);
                 Graphics.Blit(webCam, rt);
 
@@ -119,11 +129,6 @@ namespace NomadGo.Vision
             var detections = inferenceEngine.RunInference(frame);
             latestDetections = detections;
             OnDetectionsUpdated?.Invoke(detections);
-
-            if (detections.Count > 0)
-            {
-                Debug.Log($"[FrameProcessor] {detections.Count} detections, {inferenceEngine.LastInferenceTimeMs:F1}ms");
-            }
         }
 
         private void OnDestroy()

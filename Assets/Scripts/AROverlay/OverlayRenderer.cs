@@ -5,14 +5,21 @@ using NomadGo.Counting;
 
 namespace NomadGo.AROverlay
 {
+    /// <summary>
+    /// FIXED:
+    /// - Bounding box coordinates now scale correctly from 640x640 YOLO space to screen space
+    /// - Added rotation correction for portrait mode (rotAngle=90)
+    /// - Y-axis flip correction (Unity ReadPixels = y-up, OnGUI = y-down)
+    /// - Confidence shown as percentage 0-100
+    /// </summary>
     public class OverlayRenderer : MonoBehaviour
     {
         [Header("Overlay Settings")]
         [SerializeField] private Color boundingBoxColor = Color.green;
         [SerializeField] private Color rowLineColor = Color.cyan;
-        [SerializeField] private float lineWidth = 2f;
-        [SerializeField] private int fontSize = 14;
-        [SerializeField] private Color labelBackgroundColor = new Color(0, 0, 0, 0.7f);
+        [SerializeField] private float lineWidth = 3f;
+        [SerializeField] private int fontSize = 16;
+        [SerializeField] private Color labelBackgroundColor = new Color(0, 0, 0, 0.75f);
         [SerializeField] private Color labelTextColor = Color.white;
 
         private List<DetectionResult> currentDetections = new List<DetectionResult>();
@@ -26,31 +33,38 @@ namespace NomadGo.AROverlay
         private GUIStyle rowStyle;
         private bool stylesInitialized = false;
 
+        // FIXED: Track YOLO input size and camera rotation for correct coordinate mapping
+        private int yoloInputW = 640;
+        private int yoloInputH = 640;
+        private AppShell.CameraFix cameraFix;
+
         private void Start()
         {
+            cameraFix = FindObjectOfType<AppShell.CameraFix>();
+
             var countManager = FindObjectOfType<CountManager>();
             if (countManager != null)
-            {
                 countManager.OnCountsUpdated += OnCountsUpdated;
-            }
 
             var frameProcessor = FindObjectOfType<FrameProcessor>();
             if (frameProcessor != null)
             {
                 frameProcessor.OnDetectionsUpdated += OnDetectionsUpdated;
+                yoloInputW = frameProcessor.InputWidth;
+                yoloInputH = frameProcessor.InputHeight;
             }
         }
 
         private void OnDetectionsUpdated(List<DetectionResult> detections)
         {
-            currentDetections = detections;
+            currentDetections = detections ?? new List<DetectionResult>();
         }
 
         private void OnCountsUpdated(int total, Dictionary<string, int> counts, List<RowCluster> clusters)
         {
             totalCount = total;
-            countsByLabel = counts;
-            currentClusters = clusters;
+            countsByLabel = counts ?? new Dictionary<string, int>();
+            currentClusters = clusters ?? new List<RowCluster>();
         }
 
         private void InitializeStyles()
@@ -68,7 +82,6 @@ namespace NomadGo.AROverlay
             labelStyle.normal.textColor = labelTextColor;
             labelStyle.alignment = TextAnchor.MiddleCenter;
             labelStyle.fontStyle = FontStyle.Bold;
-
             Texture2D labelBg = new Texture2D(1, 1);
             labelBg.SetPixel(0, 0, labelBackgroundColor);
             labelBg.Apply();
@@ -76,11 +89,10 @@ namespace NomadGo.AROverlay
             labelStyle.padding = new RectOffset(4, 4, 2, 2);
 
             countStyle = new GUIStyle(GUI.skin.label);
-            countStyle.fontSize = fontSize + 8;
+            countStyle.fontSize = fontSize + 10;
             countStyle.normal.textColor = Color.white;
             countStyle.alignment = TextAnchor.UpperLeft;
             countStyle.fontStyle = FontStyle.Bold;
-
             Texture2D countBg = new Texture2D(1, 1);
             countBg.SetPixel(0, 0, new Color(0, 0, 0, 0.8f));
             countBg.Apply();
@@ -99,54 +111,128 @@ namespace NomadGo.AROverlay
         private void OnGUI()
         {
             InitializeStyles();
-
             DrawBoundingBoxes();
             DrawRowIndicators();
             DrawCountOverlay();
         }
 
+        /// <summary>
+        /// FIXED: Convert YOLO box (in 640x640 space) to screen space,
+        /// accounting for camera rotation and Y-axis direction.
+        /// </summary>
+        private Rect YoloBoxToScreen(Rect yoloBox)
+        {
+            int rotAngle = (cameraFix != null) ? GetCameraRotation() : 0;
+
+            float nx = yoloBox.x / yoloInputW;
+            float ny = yoloBox.y / yoloInputH;
+            float nw = yoloBox.width / yoloInputW;
+            float nh = yoloBox.height / yoloInputH;
+
+            float sx, sy, sw, sh;
+
+            // FIXED: Apply same transform as CameraFix OnPostRender for rotAngle=90
+            // In portrait mode (rotAngle=90): texture X → screen Y, texture Y (inverted) → screen X
+            if (rotAngle == 90)
+            {
+                // ReadPixels gives y=0 at bottom, YOLO expects y=0 at top → flip y
+                float flippedNy = 1f - ny - nh;
+
+                sx = flippedNy * Screen.width;
+                sy = nx * Screen.height;
+                sw = nh * Screen.width;
+                sh = nw * Screen.height;
+            }
+            else if (rotAngle == 270)
+            {
+                float flippedNy = 1f - ny - nh;
+                sx = (1f - flippedNy - nh) * Screen.width;
+                sy = (1f - nx - nw) * Screen.height;
+                sw = nh * Screen.width;
+                sh = nw * Screen.height;
+            }
+            else if (rotAngle == 180)
+            {
+                sx = (1f - nx - nw) * Screen.width;
+                sy = ny * Screen.height;
+                sw = nw * Screen.width;
+                sh = nh * Screen.height;
+            }
+            else // 0 — landscape
+            {
+                // FIXED: flip y for ReadPixels vs OnGUI coordinate difference
+                float flippedNy = 1f - ny - nh;
+                sx = nx * Screen.width;
+                sy = flippedNy * Screen.height;
+                sw = nw * Screen.width;
+                sh = nh * Screen.height;
+            }
+
+            return new Rect(sx, sy, sw, sh);
+        }
+
+        private int GetCameraRotation()
+        {
+            // Access videoRotationAngle via reflection if needed, or cache it
+            if (cameraFix == null) return 0;
+            var tex = cameraFix.CameraTexture;
+            if (tex == null) return 0;
+            return tex.videoRotationAngle;
+        }
+
         private void DrawBoundingBoxes()
         {
+            if (currentDetections == null) return;
+
             foreach (var det in currentDetections)
             {
-                Rect box = det.boundingBox;
+                Rect box = YoloBoxToScreen(det.boundingBox);
 
+                // Draw box outline (4 sides)
                 GUI.Box(new Rect(box.x, box.y, box.width, lineWidth), GUIContent.none, boxStyle);
                 GUI.Box(new Rect(box.x, box.yMax - lineWidth, box.width, lineWidth), GUIContent.none, boxStyle);
                 GUI.Box(new Rect(box.x, box.y, lineWidth, box.height), GUIContent.none, boxStyle);
                 GUI.Box(new Rect(box.xMax - lineWidth, box.y, lineWidth, box.height), GUIContent.none, boxStyle);
 
-                string labelText = $"{det.label} {det.confidence:F0}%";
+                // Label
+                string labelText = $"{det.label} {det.confidence * 100f:F0}%";
                 Vector2 labelSize = labelStyle.CalcSize(new GUIContent(labelText));
-                Rect labelRect = new Rect(box.x, box.y - labelSize.y - 2, labelSize.x + 8, labelSize.y + 4);
-                GUI.Label(labelRect, labelText, labelStyle);
+                float labelY = Mathf.Max(0, box.y - labelSize.y - 2);
+                GUI.Label(new Rect(box.x, labelY, labelSize.x + 8, labelSize.y + 4), labelText, labelStyle);
             }
         }
 
         private void DrawRowIndicators()
         {
+            if (currentClusters == null) return;
+
             foreach (var cluster in currentClusters)
             {
-                float rowY = cluster.yCenter;
-                GUI.Box(new Rect(0, rowY - 1, Screen.width, 2), GUIContent.none, rowStyle);
+                // FIXED: Convert cluster yCenter from YOLO space to screen space
+                float screenY = (cluster.yCenter / yoloInputH) * Screen.height;
+                GUI.Box(new Rect(0, screenY - 1, Screen.width, 2), GUIContent.none, rowStyle);
 
                 string rowText = $"Row {cluster.rowIndex + 1}: {cluster.Count} items";
-                GUI.Label(new Rect(10, rowY - 20, 200, 20), rowText, labelStyle);
+                GUI.Label(new Rect(10, screenY - 24, 250, 22), rowText, labelStyle);
             }
         }
 
         private void DrawCountOverlay()
         {
-            float yOffset = 10;
-            float xOffset = 10;
+            // FIXED: Draw count panel at bottom-left, above the scan buttons
+            float yOffset = Screen.height - 350f;
+            float xOffset = 10f;
 
-            GUI.Label(new Rect(xOffset, yOffset, 300, 40), $"Total Count: {totalCount}", countStyle);
-            yOffset += 45;
+            GUI.Label(new Rect(xOffset, yOffset, 320, 44), $"Total: {totalCount}", countStyle);
+            yOffset += 48;
 
-            foreach (var kvp in countsByLabel)
+            if (countsByLabel != null)
             {
-                GUI.Label(new Rect(xOffset, yOffset, 250, 25), $"  {kvp.Key}: {kvp.Value}", labelStyle);
-                yOffset += 28;
+                foreach (var kvp in countsByLabel)
+                {
+                    GUI.Label(new Rect(xOffset, yOffset, 270, 28), $"  {kvp.Key}: {kvp.Value}", labelStyle);
+                    yOffset += 30;
+                }
             }
         }
 
@@ -154,9 +240,11 @@ namespace NomadGo.AROverlay
         {
             var countManager = FindObjectOfType<CountManager>();
             if (countManager != null)
-            {
                 countManager.OnCountsUpdated -= OnCountsUpdated;
-            }
+
+            var frameProcessor = FindObjectOfType<FrameProcessor>();
+            if (frameProcessor != null)
+                frameProcessor.OnDetectionsUpdated -= OnDetectionsUpdated;
         }
     }
 }
