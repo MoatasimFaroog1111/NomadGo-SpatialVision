@@ -10,7 +10,7 @@ jobs:
   buildForAndroid:
     name: Build for Android (Release Signed)
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+    timeout-minutes: 120
 
     steps:
       - name: Checkout repository
@@ -27,6 +27,76 @@ jobs:
           restore-keys: |
             Library-Android-
             Library-
+
+      - name: Download YOLOv8n ONNX Model
+        run: |
+          pip install ultralytics --quiet
+          python3 << 'PYEOF'
+          from ultralytics import YOLO
+          import shutil, os
+
+          print("Downloading YOLOv8n and exporting to ONNX...")
+          model = YOLO('yolov8n.pt')
+          model.export(format='onnx', imgsz=640, simplify=True, opset=11, dynamic=False)
+
+          os.makedirs('Assets/StreamingAssets/Models', exist_ok=True)
+          shutil.copy('yolov8n.onnx', 'Assets/StreamingAssets/Models/yolov8n.onnx')
+
+          size_mb = os.path.getsize('Assets/StreamingAssets/Models/yolov8n.onnx') / 1024 / 1024
+          print(f'Model ready: {size_mb:.1f} MB → Assets/StreamingAssets/Models/yolov8n.onnx')
+          PYEOF
+          echo "ONNX model: $(ls -lh Assets/StreamingAssets/Models/yolov8n.onnx)"
+
+      - name: Add UNITY_SENTIS scripting define
+        run: |
+          python3 << 'PYEOF'
+          import re
+
+          path = 'ProjectSettings/ProjectSettings.asset'
+          content = open(path).read()
+
+          if 'UNITY_SENTIS' in content:
+              print('UNITY_SENTIS already present')
+          else:
+              # Platform IDs: 1=Standalone, 7=Android, 13=iOS, 19=WebGL
+              PLATFORMS = ['1', '7', '13', '19', '20']
+              define = 'UNITY_SENTIS'
+
+              # If scriptingDefineSymbols is empty dict
+              if 'scriptingDefineSymbols: {}' in content:
+                  lines = '\n'.join(f'    {p}: {define}' for p in PLATFORMS)
+                  content = content.replace(
+                      'scriptingDefineSymbols: {}',
+                      f'scriptingDefineSymbols:\n{lines}'
+                  )
+              else:
+                  # Try to append to platform 7 (Android)
+                  def add_to_platform(m):
+                      existing = m.group(2).strip()
+                      if define in existing:
+                          return m.group(0)
+                      new_val = f'{existing};{define}' if existing else define
+                      return f'{m.group(1)}{new_val}'
+
+                  for p in PLATFORMS:
+                      pattern = rf'(    {p}: )([^\n]*)'
+                      if re.search(pattern, content):
+                          content = re.sub(pattern, add_to_platform, content)
+                      else:
+                          # Add the platform line after scriptingDefineSymbols:
+                          content = re.sub(
+                              r'(scriptingDefineSymbols:\n)',
+                              rf'\g<1>    {p}: {define}\n',
+                              content
+                          )
+
+              open(path, 'w').write(content)
+              print('Added UNITY_SENTIS to ProjectSettings')
+
+          # Verify
+          lines = [l for l in open(path) if 'UNITY_SENTIS' in l or 'scriptingDefine' in l]
+          print('Result:', lines[:5])
+          PYEOF
 
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -65,26 +135,18 @@ jobs:
           APK=$(find build/Android -name "*.apk" | head -1)
           echo "Source APK: $APK ($(du -sh $APK | cut -f1))"
           
-          # Decode keystore
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.keystore
-          
-          # Install tools
           sudo apt-get install -y zipalign apksigner 2>/dev/null || true
           
-          # Step 1: Patch glEsVersion in Manifest (3.0 -> 2.0)
           python3 << 'PYEOF'
-          import zipfile, struct, os
-          
-          apk = os.environ.get('APK_PATH', '')
-          if not apk:
-              import glob
-              apk = glob.glob('build/Android/*.apk')[0]
-          
+          import zipfile, struct, os, glob
+
+          apk = glob.glob('build/Android/*.apk')[0]
           print(f"Patching: {apk}")
-          
+
           with zipfile.ZipFile(apk, 'r') as z:
               manifest = bytearray(z.read('AndroidManifest.xml'))
-          
+
           patched = 0
           for i in range(0, len(manifest)-8, 4):
               v = struct.unpack_from('<I', manifest, i)[0]
@@ -94,9 +156,9 @@ jobs:
                       struct.pack_into('<I', manifest, i, 0x00020000)
                       patched += 1
                       print(f'  Patched glEsVersion at offset {i}')
-          
+
           print(f'Total patches: {patched}')
-          
+
           with zipfile.ZipFile(apk, 'r') as zin:
               with zipfile.ZipFile('/tmp/patched.apk', 'w') as zout:
                   for item in zin.infolist():
@@ -104,14 +166,11 @@ jobs:
                           zout.writestr(item, bytes(manifest))
                       else:
                           zout.writestr(item, zin.read(item.filename))
-          
           print('Repacked to /tmp/patched.apk')
           PYEOF
-          
-          # Step 2: Zipalign
+
           zipalign -f -p 4 /tmp/patched.apk /tmp/aligned.apk && echo "Aligned OK" || cp /tmp/patched.apk /tmp/aligned.apk
-          
-          # Step 3: Re-sign
+
           apksigner sign \
             --ks /tmp/release.keystore \
             --ks-pass "pass:${{ secrets.ANDROID_KEYSTORE_PASS }}" \
@@ -119,12 +178,9 @@ jobs:
             --key-pass "pass:${{ secrets.ANDROID_KEYALIAS_PASS }}" \
             --out /tmp/final.apk \
             /tmp/aligned.apk && echo "Signed OK" || cp /tmp/aligned.apk /tmp/final.apk
-          
-          # Step 4: Copy back using sudo
+
           sudo cp /tmp/final.apk "$APK"
           sudo chmod 644 "$APK"
-          
-          # Verify
           apksigner verify "$APK" && echo "Verification PASSED" || echo "Verify warning"
           echo "Final: $(ls -lh $APK)"
 
@@ -142,12 +198,12 @@ jobs:
           name: "NomadGo SpatialVision v${{ github.run_number }}"
           body: |
             ## NomadGo SpatialVision - Release Build
+            - Real AI detection: YOLOv8n (80 COCO classes — bottles, cups, food, etc.)
+            - Unity Sentis GPU inference
             - Signed Release APK (arm64-v8a)
             - Min SDK: Android 7.0 (API 24)
             - Target SDK: Android 14 (API 34)
             - Compatible with Moto G84 5G (Android 15)
-            - OpenGL ES 2.0 (patched for maximum compatibility)
-            - ARCore optional
           files: build/Android/*.apk
           draft: false
           prerelease: false
