@@ -1,113 +1,42 @@
 using UnityEngine;
-using UnityEngine.UI;
-using TMPro;
 
 namespace NomadGo.AppShell
 {
     /// <summary>
-    /// FIXED: ScanUIController now works in two modes:
-    /// 1. Editor-wired mode (SerializeField references assigned in Inspector)
-    /// 2. Runtime auto-find mode (finds UI elements by name if not assigned)
-    /// This fixes the bug where all SerializeField references were null.
+    /// FIXED v3: ScanUIController is DISABLED when UIBuilder is present.
+    /// UIBuilder v3 uses OnGUI() and handles all scan control.
+    /// ScanUIController was designed for Editor-wired UGUI which conflicts with UIBuilder.
     /// </summary>
     public class ScanUIController : MonoBehaviour
     {
-        [Header("UI Elements (assign in Inspector OR leave null for auto-find)")]
-        [SerializeField] private Button startScanButton;
-        [SerializeField] private Button stopScanButton;
-        [SerializeField] private Button exportSessionButton;
-        [SerializeField] private TextMeshProUGUI statusText;
-        [SerializeField] private GameObject scanPanel;
-        [SerializeField] private GameObject resultsPanel;
-
-        private bool isScanning = false;
-
-        private void Start()
+        private void Awake()
         {
-            // FIXED: Auto-find UI elements if not assigned in Inspector
-            if (startScanButton == null)
-                startScanButton = FindButtonByName("StartScanBtn");
-            if (stopScanButton == null)
-                stopScanButton = FindButtonByName("StopScanBtn");
-            if (exportSessionButton == null)
-                exportSessionButton = FindButtonByName("ExportBtn");
-
-            if (startScanButton != null)
-                startScanButton.onClick.AddListener(OnStartScan);
-
-            if (stopScanButton != null)
-                stopScanButton.onClick.AddListener(OnStopScan);
-
-            if (exportSessionButton != null)
-                exportSessionButton.onClick.AddListener(OnExportSession);
-
-            SetScanState(false);
-        }
-
-        private Button FindButtonByName(string name)
-        {
-            var go = GameObject.Find(name);
-            if (go != null) return go.GetComponent<Button>();
-            return null;
-        }
-
-        private void OnStartScan()
-        {
-            if (AppManager.Instance == null)
+            // FIXED: Disable this script if UIBuilder is handling the UI
+            var uiBuilder = FindObjectOfType<UIBuilder>();
+            if (uiBuilder != null)
             {
-                Debug.LogError("[ScanUI] AppManager not found.");
+                Debug.Log("[ScanUIController] UIBuilder detected. Disabling ScanUIController to prevent conflicts.");
+                enabled = false;
                 return;
             }
 
-            AppManager.Instance.StartScan();
-            SetScanState(true);
-            UpdateStatus("Scanning...");
+            Debug.Log("[ScanUIController] UIBuilder not found. Running in standalone mode.");
         }
 
-        private void OnStopScan()
+        // Fallback: minimal OnGUI if no UIBuilder
+        private void OnGUI()
         {
-            if (AppManager.Instance != null)
-                AppManager.Instance.StopScan();
+            if (!enabled) return;
 
-            SetScanState(false);
-            UpdateStatus("Scan stopped.");
-        }
+            float W = Screen.width;
+            float H = Screen.height;
+            float btnH = 120;
+            float btnM = 20;
 
-        private void OnExportSession()
-        {
-            var storage = FindObjectOfType<Storage.SessionStorage>();
-            if (storage != null)
+            if (GUI.Button(new Rect(btnM, H - btnH - btnM, W - 2 * btnM, btnH), "Start Scan"))
             {
-                string path = storage.ExportCurrentSession();
-                if (!string.IsNullOrEmpty(path))
-                    UpdateStatus($"Exported: {System.IO.Path.GetFileName(path)}");
-                else
-                    UpdateStatus("No active session to export.");
+                if (AppManager.Instance != null) AppManager.Instance.StartScan();
             }
-        }
-
-        private void SetScanState(bool scanning)
-        {
-            isScanning = scanning;
-
-            if (startScanButton != null)
-                startScanButton.gameObject.SetActive(!scanning);
-
-            if (stopScanButton != null)
-                stopScanButton.gameObject.SetActive(scanning);
-
-            if (scanPanel != null)
-                scanPanel.SetActive(scanning);
-
-            if (resultsPanel != null)
-                resultsPanel.SetActive(!scanning);
-        }
-
-        private void UpdateStatus(string message)
-        {
-            if (statusText != null)
-                statusText.text = message;
-            Debug.Log($"[ScanUI] {message}");
         }
     }
 }
