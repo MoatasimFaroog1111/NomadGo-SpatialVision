@@ -4,14 +4,12 @@ using UnityEngine;
 namespace NomadGo.AppShell
 {
     /// <summary>
-    /// FIXED v3: Use OnGUI() for ALL buttons.
-    /// UGUI Canvas (Image/Button with shaders) causes PINK rendering on many Android devices.
-    /// OnGUI is immediate-mode, works on ALL Android hardware without shader compilation.
-    /// Layout:
-    ///   Top bar:   Status text
-    ///   Bottom:    [Start Scan] or [Stop Scan]
-    ///              [Export]  [Reports]
-    ///   Reports panel shown over camera when active.
+    /// FIXED v4:
+    /// - Polls CountManager every Update() for live item count
+    /// - Shows count and label breakdown in the status bar while scanning
+    /// - Draws colored bounding boxes over detected items in OnGUI
+    /// - Box coordinates transform from landscape detection space → portrait screen
+    /// - All rendering via OnGUI (no UGUI Canvas shaders → no pink screen)
     /// </summary>
     public class UIBuilder : MonoBehaviour
     {
@@ -19,6 +17,18 @@ namespace NomadGo.AppShell
         private bool showReports = false;
         private string statusMessage = "NomadGo Ready — Press Start Scan";
         private string reportsContent = "No sessions recorded yet.\nStart a scan to create a report.";
+
+        // Live detection data
+        private int detectedTotal = 0;
+        private Dictionary<string, int> detectedByLabel = new Dictionary<string, int>();
+        private List<Vision.DetectionResult> latestDetections = new List<Vision.DetectionResult>();
+
+        // Box drawing resources (created once)
+        private Texture2D boxTex;
+        private Texture2D labelBgTex;
+        private GUIStyle boxStyle;
+        private GUIStyle boxLabelStyle;
+        private bool boxStylesInit = false;
 
         // OnGUI styles
         private GUIStyle btnStyle;
@@ -28,7 +38,6 @@ namespace NomadGo.AppShell
         private GUIStyle titleStyle;
         private bool stylesInit = false;
 
-        // Safe area
         private Rect safeArea;
         private float btnHeight;
         private float btnMargin;
@@ -39,6 +48,39 @@ namespace NomadGo.AppShell
             safeArea = Screen.safeArea;
         }
 
+        private void Update()
+        {
+            if (!isScanning) return;
+
+            // Poll FrameProcessor for latest detections
+            var fp = FindObjectOfType<Vision.FrameProcessor>();
+            if (fp != null)
+                latestDetections = fp.LatestDetections ?? new List<Vision.DetectionResult>();
+
+            // Poll CountManager for live count
+            var cm = FindObjectOfType<Counting.CountManager>();
+            if (cm != null)
+            {
+                detectedTotal  = cm.TotalCount;
+                detectedByLabel = cm.CurrentCounts ?? new Dictionary<string, int>();
+
+                if (detectedTotal > 0)
+                {
+                    var sb = new System.Text.StringBuilder();
+                    sb.Append($"Items: {detectedTotal}  |  ");
+                    foreach (var kv in detectedByLabel)
+                        sb.Append($"{kv.Key}: {kv.Value}  ");
+                    SetStatus(sb.ToString().TrimEnd());
+                }
+                else
+                {
+                    SetStatus("Scanning... searching for items");
+                }
+            }
+        }
+
+        // ── Style initialisation ──────────────────────────────────────────────────
+
         private void InitStyles()
         {
             if (stylesInit) return;
@@ -46,9 +88,9 @@ namespace NomadGo.AppShell
             float scale = Screen.dpi > 0 ? Screen.dpi / 160f : 1f;
             scale = Mathf.Clamp(scale, 1f, 3f);
 
-            btnHeight   = 120f * scale;
-            btnMargin   = 20f  * scale;
-            statusHeight = 80f * scale;
+            btnHeight    = 120f * scale;
+            btnMargin    = 20f  * scale;
+            statusHeight = 80f  * scale;
 
             Texture2D MakeTex(Color c)
             {
@@ -63,15 +105,16 @@ namespace NomadGo.AppShell
             btnStyle.fontStyle = FontStyle.Bold;
             btnStyle.normal.textColor = Color.white;
             btnStyle.alignment = TextAnchor.MiddleCenter;
-            btnStyle.normal.background    = MakeTex(new Color(0.08f, 0.63f, 0.08f, 0.92f));
-            btnStyle.active.background    = MakeTex(new Color(0.04f, 0.45f, 0.04f, 0.95f));
-            btnStyle.hover.background     = MakeTex(new Color(0.12f, 0.75f, 0.12f, 0.92f));
+            btnStyle.normal.background = MakeTex(new Color(0.08f, 0.63f, 0.08f, 0.92f));
+            btnStyle.active.background = MakeTex(new Color(0.04f, 0.45f, 0.04f, 0.95f));
+            btnStyle.hover.background  = MakeTex(new Color(0.12f, 0.75f, 0.12f, 0.92f));
 
             statusStyle = new GUIStyle();
-            statusStyle.fontSize = Mathf.RoundToInt(26 * scale);
+            statusStyle.fontSize = Mathf.RoundToInt(24 * scale);
             statusStyle.normal.textColor = Color.white;
             statusStyle.alignment = TextAnchor.MiddleCenter;
-            statusStyle.normal.background = MakeTex(new Color(0, 0, 0, 0.65f));
+            statusStyle.wordWrap = true;
+            statusStyle.normal.background = MakeTex(new Color(0, 0, 0, 0.70f));
 
             panelStyle = new GUIStyle();
             panelStyle.normal.background = MakeTex(new Color(0, 0.05f, 0.12f, 0.9f));
@@ -92,6 +135,37 @@ namespace NomadGo.AppShell
             stylesInit = true;
         }
 
+        private void InitBoxStyles()
+        {
+            if (boxStylesInit) return;
+
+            boxTex = new Texture2D(1, 1);
+            boxTex.SetPixel(0, 0, new Color(0f, 1f, 0.2f, 0.90f));
+            boxTex.Apply();
+
+            labelBgTex = new Texture2D(1, 1);
+            labelBgTex.SetPixel(0, 0, new Color(0f, 0.6f, 0.1f, 0.85f));
+            labelBgTex.Apply();
+
+            float scale = Screen.dpi > 0 ? Screen.dpi / 160f : 1f;
+            scale = Mathf.Clamp(scale, 1f, 3f);
+
+            boxStyle = new GUIStyle();
+            boxStyle.normal.background = boxTex;
+
+            boxLabelStyle = new GUIStyle();
+            boxLabelStyle.normal.background  = labelBgTex;
+            boxLabelStyle.normal.textColor   = Color.white;
+            boxLabelStyle.fontSize = Mathf.RoundToInt(18 * scale);
+            boxLabelStyle.alignment = TextAnchor.MiddleLeft;
+            boxLabelStyle.padding  = new RectOffset(4, 4, 2, 2);
+            boxLabelStyle.wordWrap = false;
+
+            boxStylesInit = true;
+        }
+
+        // ── Main GUI ──────────────────────────────────────────────────────────────
+
         private void OnGUI()
         {
             InitStyles();
@@ -99,6 +173,10 @@ namespace NomadGo.AppShell
             float W = Screen.width;
             float H = Screen.height;
             float m = btnMargin;
+
+            // Detection boxes (drawn behind status bar and buttons)
+            if (isScanning && latestDetections != null && latestDetections.Count > 0)
+                DrawDetectionBoxes(W, H);
 
             // ── Status bar (top) ──────────────────────────────────────────────
             GUI.Box(new Rect(0, 0, W, statusHeight), GUIContent.none, statusStyle);
@@ -108,91 +186,122 @@ namespace NomadGo.AppShell
             if (showReports)
             {
                 DrawReportsPanel(W, H);
-                return; // Don't show buttons under panel
+                return;
             }
 
             // ── Buttons (bottom) ──────────────────────────────────────────────
             float bottomY = H - m - btnHeight;
             float halfW   = (W - 3 * m) / 2f;
+            float row2Y   = bottomY - m - btnHeight;
 
-            // Row 2 (above): Export | Reports
-            float row2Y = bottomY - m - btnHeight;
+            DrawButton(new Rect(m,          row2Y, halfW, btnHeight),
+                "Export",   new Color(0.12f, 0.31f, 0.78f, 0.92f), OnExport);
+            DrawButton(new Rect(2*m + halfW, row2Y, halfW, btnHeight),
+                "Reports",  new Color(0.47f, 0.16f, 0.63f, 0.92f), OnToggleReports);
 
-            DrawButton(new Rect(m, row2Y, halfW, btnHeight),
-                "Export", new Color(0.12f, 0.31f, 0.78f, 0.92f), OnExport);
-
-            DrawButton(new Rect(2 * m + halfW, row2Y, halfW, btnHeight),
-                "Reports", new Color(0.47f, 0.16f, 0.63f, 0.92f), OnToggleReports);
-
-            // Row 1 (bottom): Start/Stop full-width
             if (!isScanning)
-            {
-                DrawButton(new Rect(m, bottomY, W - 2 * m, btnHeight),
+                DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
                     "\u25B6  Start Scan", new Color(0.08f, 0.63f, 0.08f, 0.92f), OnStartScan);
-            }
             else
-            {
-                DrawButton(new Rect(m, bottomY, W - 2 * m, btnHeight),
+                DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
                     "\u25A0  Stop Scan", new Color(0.78f, 0.12f, 0.12f, 0.92f), OnStopScan);
+        }
+
+        // ── Detection box drawing ─────────────────────────────────────────────────
+
+        private void DrawDetectionBoxes(float W, float H)
+        {
+            InitBoxStyles();
+
+            float thick = Mathf.Max(3f, W * 0.004f);
+            float labelH = Mathf.Max(28f, H * 0.025f);
+
+            foreach (var det in latestDetections)
+            {
+                if (det == null) continue;
+
+                Rect b = det.boundingBox; // normalized [0,1] in landscape detection frame
+
+                // Transform landscape detection coords → portrait screen pixels
+                // For Android portrait with videoRotationAngle=90 (back camera):
+                //   landscape U → portrait Y (top→bottom = U=0→1)
+                //   landscape V → portrait X (left→right = V=0→1)
+                // Detection frame may be Y-flipped on Android RenderTexture,
+                // so by = 1 - by_raw gives correct mapping.
+                float sx = (1f - b.y - b.height) * W;
+                float sy = b.x * H;
+                float sw = b.height * W;
+                float sh = b.width  * H;
+
+                sx = Mathf.Max(0, sx);
+                sy = Mathf.Max(0, sy);
+                sw = Mathf.Max(40, sw);
+                sh = Mathf.Max(40, sh);
+
+                // Box outline (4 rectangles = outline)
+                GUI.Box(new Rect(sx,           sy,           sw,     thick), GUIContent.none, boxStyle); // top
+                GUI.Box(new Rect(sx,           sy+sh-thick,  sw,     thick), GUIContent.none, boxStyle); // bottom
+                GUI.Box(new Rect(sx,           sy,           thick,  sh),    GUIContent.none, boxStyle); // left
+                GUI.Box(new Rect(sx+sw-thick,  sy,           thick,  sh),    GUIContent.none, boxStyle); // right
+
+                // Label
+                string lbl = $" {det.label} {det.confidence:P0}";
+                GUI.Label(new Rect(sx, sy - labelH, Mathf.Min(sw, W * 0.55f), labelH), lbl, boxLabelStyle);
             }
         }
 
+        // ── Button helper ─────────────────────────────────────────────────────────
+
         private void DrawButton(Rect rect, string label, Color color, System.Action onClick)
         {
-            Texture2D normalTex = new Texture2D(1, 1);
-            normalTex.SetPixel(0, 0, color);
-            normalTex.Apply();
-            btnStyle.normal.background = normalTex;
+            Texture2D nTex = new Texture2D(1, 1);
+            nTex.SetPixel(0, 0, color); nTex.Apply();
+            btnStyle.normal.background = nTex;
 
-            Color hoverColor = new Color(
+            Color hc = new Color(
                 Mathf.Min(1f, color.r + 0.12f),
                 Mathf.Min(1f, color.g + 0.12f),
-                Mathf.Min(1f, color.b + 0.12f),
-                color.a);
-            Texture2D hoverTex = new Texture2D(1, 1);
-            hoverTex.SetPixel(0, 0, hoverColor);
-            hoverTex.Apply();
-            btnStyle.hover.background = hoverTex;
-            btnStyle.active.background = hoverTex;
+                Mathf.Min(1f, color.b + 0.12f), color.a);
+            Texture2D hTex = new Texture2D(1, 1);
+            hTex.SetPixel(0, 0, hc); hTex.Apply();
+            btnStyle.hover.background  = hTex;
+            btnStyle.active.background = hTex;
 
             if (GUI.Button(rect, label, btnStyle))
                 onClick?.Invoke();
         }
 
+        // ── Reports panel ─────────────────────────────────────────────────────────
+
         private void DrawReportsPanel(float W, float H)
         {
-            float panelX = 20;
-            float panelY = statusHeight + 10;
-            float panelW = W - 40;
-            float panelH = H - statusHeight - 20;
+            float px = 20, py = statusHeight + 10;
+            float pw = W - 40, ph = H - statusHeight - 20;
 
-            GUI.Box(new Rect(panelX, panelY, panelW, panelH), GUIContent.none, panelStyle);
+            GUI.Box(new Rect(px, py, pw, ph), GUIContent.none, panelStyle);
+            GUI.Label(new Rect(px, py + 10, pw, 60), "SESSION REPORTS", titleStyle);
 
-            // Title
-            GUI.Label(new Rect(panelX, panelY + 10, panelW, 60), "SESSION REPORTS", titleStyle);
+            float cy = py + 75;
+            float ch = ph - 75 - btnHeight - 20;
+            GUI.Label(new Rect(px + 10, cy, pw - 20, ch), reportsContent, textStyle);
 
-            // Content (scrollable area approximation)
-            float contentY = panelY + 75;
-            float contentH = panelH - 75 - btnHeight - 20;
-            GUI.Label(new Rect(panelX + 10, contentY, panelW - 20, contentH), reportsContent, textStyle);
-
-            // Buttons at bottom of panel
-            float bY = panelY + panelH - btnHeight - 10;
-            float bW = (panelW - 30) / 2f;
-
-            DrawButton(new Rect(panelX + 10, bY, bW, btnHeight),
+            float bY = py + ph - btnHeight - 10;
+            float bW = (pw - 30) / 2f;
+            DrawButton(new Rect(px + 10,      bY, bW, btnHeight),
                 "Refresh", new Color(0.12f, 0.47f, 0.71f, 0.92f), RefreshReports);
-
-            DrawButton(new Rect(panelX + 20 + bW, bY, bW, btnHeight),
+            DrawButton(new Rect(px + 20 + bW, bY, bW, btnHeight),
                 "X  Close", new Color(0.71f, 0.24f, 0.24f, 0.92f), () => showReports = false);
         }
 
-        // ── Callbacks ──────────────────────────────────────────────────────────
+        // ── Callbacks ─────────────────────────────────────────────────────────────
 
         private void OnStartScan()
         {
             isScanning = true;
-            SetStatus("Scanning... (Camera active)");
+            detectedTotal = 0;
+            detectedByLabel.Clear();
+            latestDetections.Clear();
+            SetStatus("Scanning... searching for items");
 
             if (AppManager.Instance != null)
                 AppManager.Instance.StartScan();
@@ -206,7 +315,11 @@ namespace NomadGo.AppShell
         private void OnStopScan()
         {
             isScanning = false;
-            SetStatus("Scan stopped. Check Reports for results.");
+            string summary = detectedTotal > 0
+                ? $"Scan done. {detectedTotal} items found. See Reports."
+                : "Scan stopped. Check Reports for results.";
+            SetStatus(summary);
+            latestDetections.Clear();
 
             if (AppManager.Instance != null)
                 AppManager.Instance.StopScan();
@@ -223,15 +336,11 @@ namespace NomadGo.AppShell
             if (storage != null)
             {
                 string path = storage.ExportCurrentSession();
-                if (!string.IsNullOrEmpty(path))
-                    SetStatus($"Exported: {System.IO.Path.GetFileName(path)}");
-                else
-                    SetStatus("No active session to export.");
+                SetStatus(!string.IsNullOrEmpty(path)
+                    ? $"Exported: {System.IO.Path.GetFileName(path)}"
+                    : "No active session to export.");
             }
-            else
-            {
-                SetStatus("Storage not available.");
-            }
+            else { SetStatus("Storage not available."); }
         }
 
         private void OnToggleReports()
@@ -243,33 +352,29 @@ namespace NomadGo.AppShell
         private void RefreshReports()
         {
             var storage = FindObjectOfType<Storage.SessionStorage>();
-            if (storage == null)
-            {
-                reportsContent = "Storage system not available.";
-                return;
-            }
+            if (storage == null) { reportsContent = "Storage system not available."; return; }
 
-            string[] sessionIds = storage.GetAllSessionIds();
-            if (sessionIds == null || sessionIds.Length == 0)
+            string[] ids = storage.GetAllSessionIds();
+            if (ids == null || ids.Length == 0)
             {
                 reportsContent = "No sessions recorded yet.\nStart a scan to create a report.";
                 return;
             }
 
             var sb = new System.Text.StringBuilder();
-            sb.AppendLine($"Total Sessions: {sessionIds.Length}\n");
+            sb.AppendLine($"Total Sessions: {ids.Length}\n");
 
-            int start = Mathf.Max(0, sessionIds.Length - 5);
-            for (int i = sessionIds.Length - 1; i >= start; i--)
+            int start = Mathf.Max(0, ids.Length - 5);
+            for (int i = ids.Length - 1; i >= start; i--)
             {
-                var session = storage.LoadSession(sessionIds[i]);
+                var session = storage.LoadSession(ids[i]);
                 if (session != null)
                 {
                     sb.AppendLine($"ID: {session.sessionId}");
-                    sb.AppendLine($"  Start:   {session.startTime}");
+                    sb.AppendLine($"  Start:     {session.startTime}");
                     if (!string.IsNullOrEmpty(session.endTime))
-                        sb.AppendLine($"  End:     {session.endTime}");
-                    sb.AppendLine($"  Items:   {session.totalItemsCounted}");
+                        sb.AppendLine($"  End:       {session.endTime}");
+                    sb.AppendLine($"  Items:     {session.totalItemsCounted}");
                     sb.AppendLine($"  Snapshots: {session.snapshots?.Count ?? 0}");
                     sb.AppendLine();
                 }
