@@ -1,264 +1,234 @@
 using System.Collections;
 using UnityEngine;
-using UnityEngine.UI;
 
 namespace NomadGo.AppShell
 {
     /// <summary>
-    /// CameraFix v10 — Three targeted fixes over v9:
+    /// CameraFix v7 — Black-screen + flip fixes for Moto G84 5G (Android 15, Vulkan)
     ///
-    ///  FIX 1 – RawImage sizing: v9 used full-screen anchoring which caused the
-    ///    camera texture to be STRETCHED to screen dimensions BEFORE rotation,
-    ///    distorting the image. Now the RawImage uses exact texture dimensions
-    ///    (sizeDelta = camW x camH), centred, then rotated and scaled-to-fill.
-    ///    This is the correct Unity approach for displaying camera with rotation.
+    /// Black screen root cause: cam.depth=-10 meant our OnPostRender GL drawing happened
+    /// BEFORE other cameras (AR camera, depth=0) which then cleared the screen to black.
+    /// Fix: cam.depth=100 → we render LAST, nothing can overwrite our camera feed.
+    /// All other cameras are disabled so nothing clears our output.
     ///
-    ///  FIX 2 – Orientation locked to Portrait (manifest): fullSensor caused
-    ///    videoRotationAngle to change when the user moved the phone, making the
-    ///    display flicker/wrong. Portrait lock gives a stable, known rotation.
+    /// Camera flip root cause: On Vulkan (Android 15 default), Graphics.Blit writes
+    /// the RenderTexture with Y=0 at TOP, while GL.TexCoord2 addresses with Y=0 at
+    /// BOTTOM. This inverts the V axis. Fix: detect SystemInfo.graphicsUVStartsAtTop
+    /// and swap v0/v1 in all UV mappings.
     ///
-    ///  FIX 3 – Diagnostic OnGUI: shows a large, always-visible yellow/red status
-    ///    panel so we can see exactly which stage the camera is at, regardless
-    ///    of whether the Canvas is rendering correctly.
-    ///
-    /// Flip formula (official Unity docs):
-    ///   flipY = (videoVerticallyMirrored != SystemInfo.graphicsUVStartsAtTop)
+    /// Two-step render:
+    ///   1. Update(): Graphics.Blit(webCamTexture → blitRT)  — converts OES → ARGB32
+    ///   2. OnPostRender(): GL quads with correct rotation + V-flip UVs
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class CameraFix : MonoBehaviour
     {
-        private Camera cam;
+        private Camera       cam;
         private WebCamTexture webCamTexture;
         private RenderTexture blitRT;
-        private RawImage rawImage;
-        private bool cameraReady = false;
-        private string cameraStatus = "Initializing...";
-        private string errorMsg = "";
-        private int camWidth, camHeight;
+        private Material      drawMat;
+        private bool          cameraReady = false;
+        private int           rotAngle    = 0;
+        private bool          isMirrored  = false;
+        private bool          invertV     = false; // true on Vulkan (graphicsUVStartsAtTop)
 
         public WebCamTexture CameraTexture => webCamTexture;
-        public bool IsReady => cameraReady;
+        public bool          IsReady       => cameraReady;
 
         private void Awake()
         {
             cam = GetComponent<Camera>();
-            cam.clearFlags     = CameraClearFlags.SolidColor;
-            cam.backgroundColor = Color.black;
-            cam.allowHDR       = false;
-            cam.allowMSAA      = false;
-            cam.depth          = -10;
+            if (cam != null)
+            {
+                cam.clearFlags    = CameraClearFlags.SolidColor;
+                cam.backgroundColor = Color.black;
+                cam.allowHDR      = false;
+                cam.allowMSAA     = false;
+                // depth=100: render LAST so AR/main cameras cannot overwrite our feed
+                cam.depth         = 100;
+            }
 
-            // Kill all AR components that could steal the camera device
+            // Disable ARCameraBackground (magenta on OpenGL ES)
             foreach (var mb in FindObjectsOfType<MonoBehaviour>())
             {
-                if (mb == null) continue;
-                string t = mb.GetType().Name;
-                if (t == "ARCameraBackground" || t == "ARSession" ||
-                    t == "ARCameraManager"   || t == "ARInputManager" ||
-                    t == "ARPlaneManager"    || t == "ARRaycastManager")
+                if (mb != null && mb.GetType().Name == "ARCameraBackground")
                 {
                     mb.enabled = false;
-                    mb.gameObject.SetActive(false);
+                    Debug.Log($"[CameraFix] Disabled ARCameraBackground on {mb.gameObject.name}");
                 }
             }
 
-            // Disable all other cameras
+            // Disable ALL other cameras so they cannot clear our camera feed
             foreach (var c in FindObjectsOfType<Camera>())
-                if (c != cam) c.enabled = false;
-
-            BuildCameraCanvas();
+            {
+                if (c == cam) continue;
+                c.enabled = false;
+                Debug.Log($"[CameraFix] Disabled camera: {c.gameObject.name} (was depth={c.depth})");
+            }
         }
 
-        private void BuildCameraCanvas()
+        private void Start()
         {
-            var go = new GameObject("[CameraCanvas]");
-            DontDestroyOnLoad(go);
-
-            var canvas = go.AddComponent<Canvas>();
-            canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
-            canvas.sortingOrder = -1000;
-            go.AddComponent<CanvasScaler>();
-
-            var imgGO = new GameObject("[CameraImage]");
-            imgGO.transform.SetParent(go.transform, false);
-            rawImage = imgGO.AddComponent<RawImage>();
-            rawImage.color = new Color(0, 0, 0, 0); // Fully transparent until ready
-
-            // Centred pivot — will be given exact texture dimensions in coroutine
-            var rt = rawImage.GetComponent<RectTransform>();
-            rt.anchorMin        = new Vector2(0.5f, 0.5f);
-            rt.anchorMax        = new Vector2(0.5f, 0.5f);
-            rt.pivot            = new Vector2(0.5f, 0.5f);
-            rt.anchoredPosition = Vector2.zero;
-            rt.sizeDelta        = Vector2.zero;
+            StartCoroutine(StartCamera());
         }
-
-        private void Start() => StartCoroutine(StartCamera());
 
         private IEnumerator StartCamera()
         {
-            cameraStatus = "Requesting permission...";
             yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
 
             if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
             {
-                errorMsg = "Camera permission denied!\nPlease grant camera access in Settings.";
-                cameraStatus = "Permission denied";
+                Debug.LogError("[CameraFix] Camera permission denied!");
                 yield break;
             }
 
-            // Log all available camera devices
-            var devices = WebCamTexture.devices;
-            cameraStatus = $"Found {devices.Length} camera(s)";
-            for (int i = 0; i < devices.Length; i++)
-                Debug.Log($"[CameraFix] Cam {i}: {devices[i].name} front={devices[i].isFrontFacing}");
-
-            if (devices.Length == 0)
+            string camName = "";
+            foreach (var device in WebCamTexture.devices)
             {
-                errorMsg = "No camera device found on this device!";
-                cameraStatus = "No cameras";
+                Debug.Log($"[CameraFix] Device: {device.name} front={device.isFrontFacing}");
+                if (!device.isFrontFacing) { camName = device.name; break; }
+            }
+            if (string.IsNullOrEmpty(camName) && WebCamTexture.devices.Length > 0)
+                camName = WebCamTexture.devices[0].name;
+
+            if (string.IsNullOrEmpty(camName))
+            {
+                Debug.LogError("[CameraFix] No camera device found!");
                 yield break;
             }
 
-            // Use default back camera (no device name = let Android choose)
-            cameraStatus = "Starting camera (640x480)...";
-            webCamTexture = new WebCamTexture(640, 480, 30);
+            Debug.Log($"[CameraFix] Opening: {camName}");
+            webCamTexture = new WebCamTexture(camName, 1280, 720, 30);
             webCamTexture.Play();
 
-            // Wait up to 60 s for real frames
-            float timeout = 60f;
+            float timeout = 10f;
             while (webCamTexture.width <= 16)
             {
                 timeout -= Time.deltaTime;
-                cameraStatus = $"Waiting for camera... ({timeout:F0}s left)  w={webCamTexture.width}";
-                if (timeout <= 0)
-                {
-                    webCamTexture.Stop();
-
-                    // Retry with explicit back-camera name
-                    string backName = "";
-                    foreach (var d in devices)
-                        if (!d.isFrontFacing) { backName = d.name; break; }
-
-                    if (!string.IsNullOrEmpty(backName))
-                    {
-                        cameraStatus = $"Retrying with: {backName}";
-                        webCamTexture = new WebCamTexture(backName, 640, 480, 30);
-                        webCamTexture.Play();
-                        timeout = 30f;
-
-                        while (webCamTexture.width <= 16)
-                        {
-                            timeout -= Time.deltaTime;
-                            cameraStatus = $"Retry... ({timeout:F0}s) w={webCamTexture.width}";
-                            if (timeout <= 0) break;
-                            yield return null;
-                        }
-                    }
-
-                    if (webCamTexture.width <= 16)
-                    {
-                        errorMsg = $"Camera timeout!\nCheck camera permissions in Settings.\nDevices found: {devices.Length}";
-                        cameraStatus = "Timeout";
-                        yield break;
-                    }
-                }
+                if (timeout <= 0) { Debug.LogError("[CameraFix] Camera timeout!"); yield break; }
                 yield return null;
             }
 
             yield return new WaitForSeconds(0.3f);
 
-            camWidth  = webCamTexture.width;
-            camHeight = webCamTexture.height;
-            int  rotAngle = webCamTexture.videoRotationAngle;
-            bool mirror   = webCamTexture.videoVerticallyMirrored;
-            bool flipY    = (mirror != SystemInfo.graphicsUVStartsAtTop);
+            rotAngle   = webCamTexture.videoRotationAngle;
+            isMirrored = webCamTexture.videoVerticallyMirrored;
 
-            Debug.Log($"[CameraFix] Ready: {camWidth}x{camHeight}" +
-                      $" rot={rotAngle} mirror={mirror} flipY={flipY}" +
-                      $" api={SystemInfo.graphicsDeviceType}" +
-                      $" uvTop={SystemInfo.graphicsUVStartsAtTop}");
+            // Vulkan (Android 15 default): Graphics.Blit stores RT with Y=0 at TOP,
+            // but GL.TexCoord2 addresses V=0 at BOTTOM → must invert V axis.
+            invertV = SystemInfo.graphicsUVStartsAtTop;
 
-            blitRT = new RenderTexture(camWidth, camHeight, 0, RenderTextureFormat.ARGB32);
+            Debug.Log($"[CameraFix] Ready: {webCamTexture.width}x{webCamTexture.height} " +
+                      $"rotAngle={rotAngle} mirror={isMirrored} " +
+                      $"invertV={invertV} api={SystemInfo.graphicsDeviceType}");
+
+            blitRT = new RenderTexture(webCamTexture.width, webCamTexture.height, 0, RenderTextureFormat.ARGB32);
             blitRT.Create();
 
-            // ── FIX 1: Exact texture dimensions, not full-screen anchoring ──
-            // Full-screen anchoring would stretch the texture to 1080×2340 BEFORE
-            // rotation, distorting aspect ratio. Exact dimensions + scale-to-fill is correct.
-            rawImage.texture = blitRT;
-            rawImage.color   = Color.white;
+            var shader = Shader.Find("Unlit/Texture");
+            if (shader == null || !shader.isSupported) shader = Shader.Find("Sprites/Default");
+            drawMat = new Material(shader);
 
-            var rect = rawImage.GetComponent<RectTransform>();
-            rect.sizeDelta = new Vector2(camWidth, camHeight); // ← KEY FIX
-
-            // Rotate so the landscape texture appears portrait
-            rect.localRotation = Quaternion.Euler(0f, 0f, -rotAngle);
-
-            // Scale to fill the portrait screen
-            float scale;
-            if (rotAngle == 90 || rotAngle == 270)
-            {
-                // After -90° rotation: visual width = camHeight, visual height = camWidth
-                scale = Mathf.Max(
-                    (float)Screen.width  / camHeight,
-                    (float)Screen.height / camWidth
-                );
-            }
-            else
-            {
-                scale = Mathf.Max(
-                    (float)Screen.width  / camWidth,
-                    (float)Screen.height / camHeight
-                );
-            }
-
-            rect.localScale = new Vector3(scale, flipY ? -scale : scale, 1f);
-
-            cameraStatus = $"OK {camWidth}x{camHeight} rot={rotAngle} flip={flipY} scale={scale:F2}";
-            cameraReady  = true;
-            errorMsg     = "";
+            cameraReady = true;
         }
 
         private void Update()
         {
             if (!cameraReady || webCamTexture == null || !webCamTexture.isPlaying) return;
+            if (!webCamTexture.didUpdateThisFrame) return;
             Graphics.Blit(webCamTexture, blitRT);
         }
 
-        // ── FIX 3: Always-visible diagnostic display ─────────────────────────────
-        // This OnGUI renders regardless of Canvas state, so the user always sees
-        // the current camera status even if the RawImage isn't working yet.
-        private void OnGUI()
+        private void OnPostRender()
         {
-            if (cameraReady) return; // Camera working normally — no diagnostic needed
+            if (!cameraReady || blitRT == null || drawMat == null) return;
 
-            float W = Screen.width;
-            float H = Screen.height;
-            float panelY  = H * 0.3f;
-            float panelH  = H * 0.4f;
+            drawMat.mainTexture = blitRT;
 
-            // Background
-            Color bgColor = string.IsNullOrEmpty(errorMsg)
-                ? new Color(1f, 0.8f, 0f, 0.92f)   // Yellow = starting
-                : new Color(0.85f, 0.1f, 0.1f, 0.95f); // Red = error
+            GL.PushMatrix();
+            GL.LoadOrtho();
+            drawMat.SetPass(0);
+            GL.Begin(GL.QUADS);
 
-            GUI.color = bgColor;
-            GUI.DrawTexture(new Rect(0, panelY, W, panelH), Texture2D.whiteTexture);
-            GUI.color = Color.black;
+            // v0/v1 account for Vulkan Y-axis inversion:
+            // invertV=false (OpenGL ES): v0=0 (bottom), v1=1 (top)  → standard
+            // invertV=true  (Vulkan)   : v0=1 (top),    v1=0 (bottom) → flipped
+            float v0 = invertV ? 1f : 0f;
+            float v1 = invertV ? 0f : 1f;
 
-            var style = new GUIStyle(GUI.skin.label)
+            // Vertex order: BL(0,0) → BR(1,0) → TR(1,1) → TL(0,1) in screen space
+            if (rotAngle == 0 || rotAngle == 360)
             {
-                fontSize  = Mathf.Max(24, (int)(W * 0.04f)),
-                wordWrap  = true,
-                alignment = TextAnchor.UpperLeft
-            };
+                if (isMirrored)
+                {
+                    GL.TexCoord2(1, v1); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(0, v1); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(0, 1, 0);
+                }
+                else
+                {
+                    GL.TexCoord2(0, v1); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(1, v1); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(0, 1, 0);
+                }
+            }
+            else if (rotAngle == 90)
+            {
+                // Portrait mode: sensor landscape → rotate 90° CW for display
+                if (isMirrored)
+                {
+                    GL.TexCoord2(0, v0); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(0, v1); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(1, v1); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(0, 1, 0);
+                }
+                else
+                {
+                    GL.TexCoord2(1, v0); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(1, v1); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(0, v1); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(0, 1, 0);
+                }
+            }
+            else if (rotAngle == 180)
+            {
+                if (isMirrored)
+                {
+                    GL.TexCoord2(0, v1); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(1, v1); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(0, 1, 0);
+                }
+                else
+                {
+                    GL.TexCoord2(1, v0); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(0, v1); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(1, v1); GL.Vertex3(0, 1, 0);
+                }
+            }
+            else // 270
+            {
+                if (isMirrored)
+                {
+                    GL.TexCoord2(1, v1); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(0, v1); GL.Vertex3(0, 1, 0);
+                }
+                else
+                {
+                    GL.TexCoord2(0, v1); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(1, v1); GL.Vertex3(0, 1, 0);
+                }
+            }
 
-            string diagText = string.IsNullOrEmpty(errorMsg)
-                ? $"[NomadGo Camera]\n{cameraStatus}\n\nDevices: {WebCamTexture.devices.Length}"
-                : $"[NomadGo Camera ERROR]\n{errorMsg}\n\n{cameraStatus}";
-
-            GUI.Label(new Rect(20, panelY + 15, W - 40, panelH - 30), diagText, style);
-            GUI.color = Color.white;
+            GL.End();
+            GL.PopMatrix();
         }
 
         private void OnDestroy()
@@ -266,6 +236,7 @@ namespace NomadGo.AppShell
             cameraReady = false;
             if (webCamTexture != null) { webCamTexture.Stop(); webCamTexture = null; }
             if (blitRT != null) { blitRT.Release(); Destroy(blitRT); blitRT = null; }
+            if (drawMat != null) { Destroy(drawMat); drawMat = null; }
         }
     }
 }
