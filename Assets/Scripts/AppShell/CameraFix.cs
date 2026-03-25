@@ -4,22 +4,12 @@ using UnityEngine;
 namespace NomadGo.AppShell
 {
     /// <summary>
-    /// CameraFix v8 — Black-screen + flip fixes for Moto G84 5G (Android 15, Vulkan)
-    ///
-    /// Black screen root cause: cam.depth=-10 meant our OnPostRender GL drawing happened
-    /// BEFORE other cameras (AR camera, depth=0) which then cleared the screen to black.
-    /// Fix: cam.depth=100 → we render LAST, nothing can overwrite our camera feed.
-    ///
-    /// Camera flip root cause: On Android Vulkan, Unity performs a Y-flip at the
-    /// swapchain level when presenting. This means GL.LoadOrtho Y=0 actually maps to
-    /// the TOP of the physical screen (opposite of OpenGL ES convention).
-    /// Additionally Graphics.Blit on Vulkan stores RT with V=0 at BOTTOM (not top),
-    /// making graphicsUVStartsAtTop misleading for WebCamTexture → RenderTexture blits.
-    /// Fix: invertV = !graphicsUVStartsAtTop (negate — Vulkan needs no UV flip here).
-    ///
-    /// Two-step render:
-    ///   1. Update(): Graphics.Blit(webCamTexture → blitRT)  — converts OES → ARGB32
-    ///   2. OnPostRender(): GL quads with correct rotation + corrected V UVs
+    /// CameraFix v11
+    /// Changes vs v8/v9/v10:
+    ///  - Reverted invertV = SystemInfo.graphicsUVStartsAtTop  (v7 original, proved to show image)
+    ///  - Swapped 90° ↔ 270° UV branches (fixes inverted image when sensor reports opposite CW angle)
+    ///  - Wait 2 s after cam start (better auto-exposure on first frame)
+    ///  - OnGUI diagnostic label in screen centre (below UIBuilder status bar)
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class CameraFix : MonoBehaviour
@@ -32,6 +22,7 @@ namespace NomadGo.AppShell
         private int           rotAngle    = 0;
         private bool          isMirrored  = false;
         private bool          invertV     = false;
+        private string        diagText    = "CameraFix v11: starting...";
 
         public WebCamTexture CameraTexture => webCamTexture;
         public bool          IsReady       => cameraReady;
@@ -45,11 +36,9 @@ namespace NomadGo.AppShell
                 cam.backgroundColor = Color.black;
                 cam.allowHDR        = false;
                 cam.allowMSAA       = false;
-                // depth=100: render LAST so AR/main cameras cannot overwrite our feed
                 cam.depth           = 100;
             }
 
-            // Disable ARCameraBackground (magenta on OpenGL ES)
             foreach (var mb in FindObjectsOfType<MonoBehaviour>())
             {
                 if (mb != null && mb.GetType().Name == "ARCameraBackground")
@@ -59,26 +48,22 @@ namespace NomadGo.AppShell
                 }
             }
 
-            // Disable ALL other cameras so they cannot clear our camera feed
             foreach (var c in FindObjectsOfType<Camera>())
             {
                 if (c == cam) continue;
                 c.enabled = false;
-                Debug.Log($"[CameraFix] Disabled camera: {c.gameObject.name} (was depth={c.depth})");
+                Debug.Log($"[CameraFix] Disabled camera: {c.gameObject.name}");
             }
         }
 
-        private void Start()
-        {
-            StartCoroutine(StartCamera());
-        }
+        private void Start() { StartCoroutine(StartCamera()); }
 
         private IEnumerator StartCamera()
         {
             yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
-
             if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
             {
+                diagText = "v11: CAMERA PERMISSION DENIED";
                 Debug.LogError("[CameraFix] Camera permission denied!");
                 yield break;
             }
@@ -91,41 +76,42 @@ namespace NomadGo.AppShell
             }
             if (string.IsNullOrEmpty(camName) && WebCamTexture.devices.Length > 0)
                 camName = WebCamTexture.devices[0].name;
-
             if (string.IsNullOrEmpty(camName))
             {
+                diagText = "v11: NO CAMERA FOUND";
                 Debug.LogError("[CameraFix] No camera device found!");
                 yield break;
             }
 
+            diagText = $"v11: opening {camName}";
             Debug.Log($"[CameraFix] Opening: {camName}");
             webCamTexture = new WebCamTexture(camName, 1280, 720, 30);
             webCamTexture.Play();
 
-            // Extended timeout: 30 s for slow devices
             float timeout = 30f;
             while (webCamTexture.width <= 16)
             {
                 timeout -= Time.deltaTime;
-                if (timeout <= 0) { Debug.LogError("[CameraFix] Camera timeout!"); yield break; }
+                diagText = $"v11: waiting cam w={webCamTexture.width} t={timeout:F0}s";
+                if (timeout <= 0)
+                {
+                    diagText = "v11: CAM TIMEOUT";
+                    Debug.LogError("[CameraFix] Camera timeout!");
+                    yield break;
+                }
                 yield return null;
             }
 
-            yield return new WaitForSeconds(0.3f);
+            // Wait 2 s for auto-exposure to settle
+            yield return new WaitForSeconds(2f);
 
             rotAngle   = webCamTexture.videoRotationAngle;
             isMirrored = webCamTexture.videoVerticallyMirrored;
+            // Use original proven formula: invertV = graphicsUVStartsAtTop
+            invertV    = SystemInfo.graphicsUVStartsAtTop;
 
-            // On Android Vulkan, Unity flips the swapchain output automatically.
-            // Graphics.Blit(WebCamTexture→RT) on Vulkan stores V=0 at BOTTOM (same as
-            // OpenGL ES) because the OES → RT blit is handled by the camera driver, not
-            // Unity's Vulkan renderer.  Therefore we do NOT flip V on Vulkan.
-            // invertV = true only on OpenGL ES where the RT V=0 is at top after blit.
-            invertV = !SystemInfo.graphicsUVStartsAtTop;
-
-            Debug.Log($"[CameraFix] v8 Ready: {webCamTexture.width}x{webCamTexture.height} " +
-                      $"rotAngle={rotAngle} mirror={isMirrored} " +
-                      $"invertV={invertV} api={SystemInfo.graphicsDeviceType}");
+            diagText = $"v11 READY rot={rotAngle} mir={isMirrored} inv={invertV} api={SystemInfo.graphicsDeviceType}";
+            Debug.Log($"[CameraFix] {diagText}");
 
             blitRT = new RenderTexture(webCamTexture.width, webCamTexture.height, 0, RenderTextureFormat.ARGB32);
             blitRT.Create();
@@ -135,6 +121,18 @@ namespace NomadGo.AppShell
             drawMat = new Material(shader);
 
             cameraReady = true;
+        }
+
+        private void OnGUI()
+        {
+            // Small diagnostic label in centre of screen (below UIBuilder status bar)
+            var style = new GUIStyle(GUI.skin.label);
+            style.fontSize  = 20;
+            style.fontStyle = FontStyle.Bold;
+            style.normal.textColor = Color.yellow;
+            int w = Screen.width;
+            int h = Screen.height;
+            GUI.Label(new Rect(10, h / 2 - 20, w - 20, 40), diagText, style);
         }
 
         private void Update()
@@ -149,19 +147,14 @@ namespace NomadGo.AppShell
             if (!cameraReady || blitRT == null || drawMat == null) return;
 
             drawMat.mainTexture = blitRT;
-
             GL.PushMatrix();
             GL.LoadOrtho();
             drawMat.SetPass(0);
             GL.Begin(GL.QUADS);
 
-            // v0/v1 account for the RT V-axis convention after Graphics.Blit:
-            // invertV=false (Vulkan, no flip): v0=0 (bottom), v1=1 (top)
-            // invertV=true  (OpenGL ES, flip): v0=1 (top),    v1=0 (bottom)
             float v0 = invertV ? 1f : 0f;
             float v1 = invertV ? 0f : 1f;
 
-            // Vertex order: BL(0,0) → BR(1,0) → TR(1,1) → TL(0,1) in screen space
             if (rotAngle == 0 || rotAngle == 360)
             {
                 if (isMirrored)
@@ -179,9 +172,31 @@ namespace NomadGo.AppShell
                     GL.TexCoord2(0, v0); GL.Vertex3(0, 1, 0);
                 }
             }
+            // ── KEY CHANGE: 90° and 270° branches SWAPPED relative to v7 ──
+            // v7 used 90°-branch for rotAngle==90. Image appeared inverted.
+            // Swapping means the GL mapping that was used for 270° is now used when
+            // the device reports 90°, which corrects the inversion.
             else if (rotAngle == 90)
             {
-                // Portrait mode: sensor landscape → rotate 90° CW for display
+                // Was the 270° UV mapping in v7:
+                if (isMirrored)
+                {
+                    GL.TexCoord2(1, v1); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(0, v1); GL.Vertex3(0, 1, 0);
+                }
+                else
+                {
+                    GL.TexCoord2(0, v1); GL.Vertex3(0, 0, 0);
+                    GL.TexCoord2(0, v0); GL.Vertex3(1, 0, 0);
+                    GL.TexCoord2(1, v0); GL.Vertex3(1, 1, 0);
+                    GL.TexCoord2(1, v1); GL.Vertex3(0, 1, 0);
+                }
+            }
+            else if (rotAngle == 270)
+            {
+                // Was the 90° UV mapping in v7:
                 if (isMirrored)
                 {
                     GL.TexCoord2(0, v0); GL.Vertex3(0, 0, 0);
@@ -197,7 +212,7 @@ namespace NomadGo.AppShell
                     GL.TexCoord2(0, v0); GL.Vertex3(0, 1, 0);
                 }
             }
-            else if (rotAngle == 180)
+            else // 180
             {
                 if (isMirrored)
                 {
@@ -211,23 +226,6 @@ namespace NomadGo.AppShell
                     GL.TexCoord2(1, v0); GL.Vertex3(0, 0, 0);
                     GL.TexCoord2(0, v0); GL.Vertex3(1, 0, 0);
                     GL.TexCoord2(0, v1); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(1, v1); GL.Vertex3(0, 1, 0);
-                }
-            }
-            else // 270
-            {
-                if (isMirrored)
-                {
-                    GL.TexCoord2(1, v1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, v0); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(0, v0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, v1); GL.Vertex3(0, 1, 0);
-                }
-                else
-                {
-                    GL.TexCoord2(0, v1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(0, v0); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, v0); GL.Vertex3(1, 1, 0);
                     GL.TexCoord2(1, v1); GL.Vertex3(0, 1, 0);
                 }
             }
