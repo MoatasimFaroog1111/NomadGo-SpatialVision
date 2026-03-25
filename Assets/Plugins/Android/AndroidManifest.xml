@@ -1,280 +1,50 @@
-// ═══ استبدل الملف بالكامل بهذا ═══
+<?xml version="1.0" encoding="utf-8"?>
+<manifest
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.NomadGo.SpatialVision"
+    android:installLocation="preferExternal"
+    android:versionCode="1"
+    android:versionName="1.0">
 
-using System.Collections;
-using UnityEngine;
+    <supports-screens
+        android:smallScreens="true"
+        android:normalScreens="true"
+        android:largeScreens="true"
+        android:xlargeScreens="true"
+        android:anyDensity="true"/>
 
-namespace NomadGo.AppShell
-{
-    [RequireComponent(typeof(Camera))]
-    public class CameraFix : MonoBehaviour
-    {
-        private Camera cam;
-        private WebCamTexture webCamTexture;
-        private RenderTexture blitRT;
-        private Material drawMat;
-        private bool cameraReady = false;
-        private int rotAngle = 0;
-        private bool isMirrored = false;
-        private bool invertV = false;
+    <uses-feature android:glEsVersion="0x00020000"/>
+    <uses-feature android:name="android.hardware.camera" android:required="true"/>
+    <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
+    <uses-feature android:name="android.hardware.camera.ar" android:required="false"/>
 
-        public WebCamTexture CameraTexture => webCamTexture;
-        public bool IsReady => cameraReady;
+    <uses-permission android:name="android.permission.CAMERA"/>
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"/>
 
-        private void Awake()
-        {
-            cam = GetComponent<Camera>();
-            if (cam != null)
-            {
-                cam.clearFlags = CameraClearFlags.SolidColor;
-                cam.backgroundColor = Color.black;
-                cam.allowHDR = false;
-                cam.allowMSAA = false;
-                cam.depth = 100;
-            }
+    <application
+        android:label="@string/app_name"
+        android:icon="@mipmap/app_icon"
+        android:theme="@style/UnityThemeSelector"
+        android:hardwareAccelerated="false"
+        android:extractNativeLibs="true">
 
-            // ✅ إصلاح: تعطيل ARCameraBackground فقط (ليس كل الكاميرات)
-            foreach (var mb in FindObjectsOfType<MonoBehaviour>())
-            {
-                if (mb != null && mb.GetType().Name == "ARCameraBackground")
-                {
-                    mb.enabled = false;
-                    Debug.Log($"[CameraFix] Disabled ARCameraBackground on {mb.gameObject.name}");
-                }
-            }
+        <activity
+            android:name="com.unity3d.player.UnityPlayerGameActivity"
+            android:label="@string/app_name"
+            android:screenOrientation="portrait"
+            android:launchMode="singleTask"
+            android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <meta-data android:name="unityplayer.UnityActivity" android:value="true"/>
+        </activity>
 
-            // ✅ إصلاح: تعطيل الكاميرات الأخرى بحذر
-            foreach (var c in FindObjectsOfType<Camera>())
-            {
-                if (c == cam) continue;
-                // فقط تعطيل الكاميرات ذات depth أقل
-                if (c.depth < cam.depth)
-                {
-                    c.enabled = false;
-                    Debug.Log($"[CameraFix] Disabled camera: {c.gameObject.name}");
-                }
-            }
-        }
-
-        private void Start()
-        {
-            StartCoroutine(StartCamera());
-        }
-
-        private IEnumerator StartCamera()
-        {
-            // ✅ إصلاح: طلب صلاحية الكاميرا مع انتظار أطول
-            yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
-
-            if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
-            {
-                Debug.LogError("[CameraFix] Camera permission denied!");
-                // ✅ إعادة المحاولة بعد 3 ثوانٍ
-                yield return new WaitForSeconds(3f);
-                yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
-                if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
-                {
-                    Debug.LogError("[CameraFix] Camera permission denied again!");
-                    yield break;
-                }
-            }
-
-            string camName = "";
-            foreach (var device in WebCamTexture.devices)
-            {
-                Debug.Log($"[CameraFix] Device: {device.name} front={device.isFrontFacing}");
-                if (!device.isFrontFacing) { camName = device.name; break; }
-            }
-            if (string.IsNullOrEmpty(camName) && WebCamTexture.devices.Length > 0)
-                camName = WebCamTexture.devices[0].name;
-
-            if (string.IsNullOrEmpty(camName))
-            {
-                Debug.LogError("[CameraFix] No camera device found!");
-                yield break;
-            }
-
-            Debug.Log($"[CameraFix] Opening: {camName}");
-            
-            // ✅ إصلاح: محاولات متعددة لفتح الكاميرا
-            for (int attempt = 0; attempt < 3; attempt++)
-            {
-                try
-                {
-                    if (webCamTexture != null)
-                    {
-                        webCamTexture.Stop();
-                        webCamTexture = null;
-                    }
-                    
-                    webCamTexture = new WebCamTexture(camName, 1280, 720, 30);
-                    webCamTexture.Play();
-                }
-                catch (System.Exception e)
-                {
-                    Debug.LogError($"[CameraFix] Attempt {attempt+1} failed: {e.Message}");
-                    yield return new WaitForSeconds(2f);
-                    continue;
-                }
-
-                // ✅ إصلاح: timeout أطول (20 ثانية بدل 10)
-                float timeout = 20f;
-                while (webCamTexture.width <= 16)
-                {
-                    timeout -= Time.deltaTime;
-                    if (timeout <= 0)
-                    {
-                        Debug.LogError($"[CameraFix] Camera timeout on attempt {attempt+1}!");
-                        break;
-                    }
-                    yield return null;
-                }
-
-                if (webCamTexture.width > 16) break;
-                
-                yield return new WaitForSeconds(2f);
-            }
-
-            if (webCamTexture == null || webCamTexture.width <= 16)
-            {
-                Debug.LogError("[CameraFix] All camera attempts failed!");
-                yield break;
-            }
-
-            yield return new WaitForSeconds(0.5f);
-
-            rotAngle = webCamTexture.videoRotationAngle;
-            isMirrored = webCamTexture.videoVerticallyMirrored;
-
-            // ✅ إصلاح: كشف أفضل لـ Vulkan flip
-            string gfxAPI = SystemInfo.graphicsDeviceType.ToString();
-            invertV = SystemInfo.graphicsUVStartsAtTop;
-            
-            // ✅ إصلاح خاص: بعض أجهزة Android 15 تحتاج عكس القيمة
-            #if UNITY_ANDROID && !UNITY_EDITOR
-            if (gfxAPI.Contains("Vulkan"))
-            {
-                invertV = true;
-                Debug.Log("[CameraFix] Android Vulkan detected → forcing invertV=true");
-            }
-            else if (gfxAPI.Contains("OpenGL"))
-            {
-                invertV = false;
-                Debug.Log("[CameraFix] Android OpenGL detected → forcing invertV=false");
-            }
-            #endif
-
-            Debug.Log($"[CameraFix] Ready: {webCamTexture.width}x{webCamTexture.height} " +
-                      $"rotAngle={rotAngle} mirror={isMirrored} " +
-                      $"invertV={invertV} api={gfxAPI}");
-
-            blitRT = new RenderTexture(webCamTexture.width, webCamTexture.height, 0, RenderTextureFormat.ARGB32);
-            blitRT.Create();
-
-            // ✅ إصلاح: البحث عن shader متوافق
-            var shader = Shader.Find("Unlit/Texture");
-            if (shader == null || !shader.isSupported)
-                shader = Shader.Find("Sprites/Default");
-            if (shader == null || !shader.isSupported)
-                shader = Shader.Find("UI/Default");
-            
-            if (shader == null)
-            {
-                Debug.LogError("[CameraFix] No compatible shader found!");
-                yield break;
-            }
-            
-            drawMat = new Material(shader);
-            cameraReady = true;
-            
-            Debug.Log("[CameraFix] ✅ Camera fully initialized!");
-        }
-
-        private void Update()
-        {
-            if (!cameraReady || webCamTexture == null || !webCamTexture.isPlaying) return;
-            if (!webCamTexture.didUpdateThisFrame) return;
-            Graphics.Blit(webCamTexture, blitRT);
-        }
-
-        private void OnPostRender()
-        {
-            if (!cameraReady || blitRT == null || drawMat == null) return;
-
-            drawMat.mainTexture = blitRT;
-
-            GL.PushMatrix();
-            GL.LoadOrtho();
-            drawMat.SetPass(0);
-            GL.Begin(GL.QUADS);
-
-            float v0 = invertV ? 1f : 0f;
-            float v1 = invertV ? 0f : 1f;
-
-            // ✅ إصلاح: معالجة كل زوايا الدوران بشكل صحيح
-            switch (rotAngle)
-            {
-                case 0:
-                case 360:
-                    if (isMirrored)
-                    {
-                        GL.TexCoord2(1, v1); GL.Vertex3(0, 0, 0);
-                        GL.TexCoord2(0, v1); GL.Vertex3(1, 0, 0);
-                        GL.TexCoord2(0, v0); GL.Vertex3(1, 1, 0);
-                        GL.TexCoord2(1, v0); GL.Vertex3(0, 1, 0);
-                    }
-                    else
-                    {
-                        GL.TexCoord2(0, v1); GL.Vertex3(0, 0, 0);
-                        GL.TexCoord2(1, v1); GL.Vertex3(1, 0, 0);
-                        GL.TexCoord2(1, v0); GL.Vertex3(1, 1, 0);
-                        GL.TexCoord2(0, v0); GL.Vertex3(0, 1, 0);
-                    }
-                    break;
-
-                case 90:
-                    if (isMirrored)
-                    {
-                        GL.TexCoord2(0, v0); GL.Vertex3(0, 0, 0);
-                        GL.TexCoord2(0, v1); GL.Vertex3(1, 0, 0);
-                        GL.TexCoord2(1, v1); GL.Vertex3(1, 1, 0);
-                        GL.TexCoord2(1, v0); GL.Vertex3(0, 1, 0);
-                    }
-                    else
-                    {
-                        // ✅ إصلاح: تصحيح الاتجاه لـ Portrait
-                        GL.TexCoord2(1, v0); GL.Vertex3(0, 0, 0);
-                        GL.TexCoord2(1, v1); GL.Vertex3(1, 0, 0);
-                        GL.TexCoord2(0, v1); GL.Vertex3(1, 1, 0);
-                        GL.TexCoord2(0, v0); GL.Vertex3(0, 1, 0);
-                    }
-                    break;
-
-                case 180:
-                    if (isMirrored)
-                    {
-                        GL.TexCoord2(0, v0); GL.Vertex3(0, 0, 0);
-                        GL.TexCoord2(1, v0); GL.Vertex3(1, 0, 0);
-                        GL.TexCoord2(1, v1); GL.Vertex3(1, 1, 0);
-                        GL.TexCoord2(0, v1); GL.Vertex3(0, 1, 0);
-                    }
-                    else
-                    {
-                        GL.TexCoord2(1, v0); GL.Vertex3(0, 0, 0);
-                        GL.TexCoord2(0, v0); GL.Vertex3(1, 0, 0);
-                        GL.TexCoord2(0, v1); GL.Vertex3(1, 1, 0);
-                        GL.TexCoord2(1, v1); GL.Vertex3(0, 1, 0);
-                    }
-                    break;
-
-                case 270:
-                    if (isMirrored)
-                    {
-                        GL.TexCoord2(1, v1); GL.Vertex3(0, 0, 0);
-                        GL.TexCoord2(1, v0); GL.Vertex3(1, 0, 0);
-                        GL.TexCoord2(0, v0); GL.Vertex3(1, 1, 0);
-                        GL.TexCoord2(0, v1); GL.Vertex3(0, 1, 0);
-                    }
-                    else
-                    {
-                        // ✅ إصلاح: تصحيح الاتجاه لـ 270
-                        GL.TexCoord2(0
+        <meta-data android:name="com.google.ar.core" android:value="optional"/>
+    </application>
+</manifest>
