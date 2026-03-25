@@ -4,33 +4,34 @@ using UnityEngine;
 namespace NomadGo.AppShell
 {
     /// <summary>
-    /// CameraFix v7 — Black-screen + flip fixes for Moto G84 5G (Android 15, Vulkan)
+    /// CameraFix v8 — Black-screen + flip fixes for Moto G84 5G (Android 15, Vulkan)
     ///
     /// Black screen root cause: cam.depth=-10 meant our OnPostRender GL drawing happened
     /// BEFORE other cameras (AR camera, depth=0) which then cleared the screen to black.
     /// Fix: cam.depth=100 → we render LAST, nothing can overwrite our camera feed.
-    /// All other cameras are disabled so nothing clears our output.
     ///
-    /// Camera flip root cause: On Vulkan (Android 15 default), Graphics.Blit writes
-    /// the RenderTexture with Y=0 at TOP, while GL.TexCoord2 addresses with Y=0 at
-    /// BOTTOM. This inverts the V axis. Fix: detect SystemInfo.graphicsUVStartsAtTop
-    /// and swap v0/v1 in all UV mappings.
+    /// Camera flip root cause: On Android Vulkan, Unity performs a Y-flip at the
+    /// swapchain level when presenting. This means GL.LoadOrtho Y=0 actually maps to
+    /// the TOP of the physical screen (opposite of OpenGL ES convention).
+    /// Additionally Graphics.Blit on Vulkan stores RT with V=0 at BOTTOM (not top),
+    /// making graphicsUVStartsAtTop misleading for WebCamTexture → RenderTexture blits.
+    /// Fix: invertV = !graphicsUVStartsAtTop (negate — Vulkan needs no UV flip here).
     ///
     /// Two-step render:
     ///   1. Update(): Graphics.Blit(webCamTexture → blitRT)  — converts OES → ARGB32
-    ///   2. OnPostRender(): GL quads with correct rotation + V-flip UVs
+    ///   2. OnPostRender(): GL quads with correct rotation + corrected V UVs
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class CameraFix : MonoBehaviour
     {
-        private Camera       cam;
+        private Camera        cam;
         private WebCamTexture webCamTexture;
         private RenderTexture blitRT;
         private Material      drawMat;
         private bool          cameraReady = false;
         private int           rotAngle    = 0;
         private bool          isMirrored  = false;
-        private bool          invertV     = false; // true on Vulkan (graphicsUVStartsAtTop)
+        private bool          invertV     = false;
 
         public WebCamTexture CameraTexture => webCamTexture;
         public bool          IsReady       => cameraReady;
@@ -40,12 +41,12 @@ namespace NomadGo.AppShell
             cam = GetComponent<Camera>();
             if (cam != null)
             {
-                cam.clearFlags    = CameraClearFlags.SolidColor;
+                cam.clearFlags      = CameraClearFlags.SolidColor;
                 cam.backgroundColor = Color.black;
-                cam.allowHDR      = false;
-                cam.allowMSAA     = false;
+                cam.allowHDR        = false;
+                cam.allowMSAA       = false;
                 // depth=100: render LAST so AR/main cameras cannot overwrite our feed
-                cam.depth         = 100;
+                cam.depth           = 100;
             }
 
             // Disable ARCameraBackground (magenta on OpenGL ES)
@@ -101,7 +102,8 @@ namespace NomadGo.AppShell
             webCamTexture = new WebCamTexture(camName, 1280, 720, 30);
             webCamTexture.Play();
 
-            float timeout = 10f;
+            // Extended timeout: 30 s for slow devices
+            float timeout = 30f;
             while (webCamTexture.width <= 16)
             {
                 timeout -= Time.deltaTime;
@@ -114,11 +116,14 @@ namespace NomadGo.AppShell
             rotAngle   = webCamTexture.videoRotationAngle;
             isMirrored = webCamTexture.videoVerticallyMirrored;
 
-            // Vulkan (Android 15 default): Graphics.Blit stores RT with Y=0 at TOP,
-            // but GL.TexCoord2 addresses V=0 at BOTTOM → must invert V axis.
-            invertV = SystemInfo.graphicsUVStartsAtTop;
+            // On Android Vulkan, Unity flips the swapchain output automatically.
+            // Graphics.Blit(WebCamTexture→RT) on Vulkan stores V=0 at BOTTOM (same as
+            // OpenGL ES) because the OES → RT blit is handled by the camera driver, not
+            // Unity's Vulkan renderer.  Therefore we do NOT flip V on Vulkan.
+            // invertV = true only on OpenGL ES where the RT V=0 is at top after blit.
+            invertV = !SystemInfo.graphicsUVStartsAtTop;
 
-            Debug.Log($"[CameraFix] Ready: {webCamTexture.width}x{webCamTexture.height} " +
+            Debug.Log($"[CameraFix] v8 Ready: {webCamTexture.width}x{webCamTexture.height} " +
                       $"rotAngle={rotAngle} mirror={isMirrored} " +
                       $"invertV={invertV} api={SystemInfo.graphicsDeviceType}");
 
@@ -150,9 +155,9 @@ namespace NomadGo.AppShell
             drawMat.SetPass(0);
             GL.Begin(GL.QUADS);
 
-            // v0/v1 account for Vulkan Y-axis inversion:
-            // invertV=false (OpenGL ES): v0=0 (bottom), v1=1 (top)  → standard
-            // invertV=true  (Vulkan)   : v0=1 (top),    v1=0 (bottom) → flipped
+            // v0/v1 account for the RT V-axis convention after Graphics.Blit:
+            // invertV=false (Vulkan, no flip): v0=0 (bottom), v1=1 (top)
+            // invertV=true  (OpenGL ES, flip): v0=1 (top),    v1=0 (bottom)
             float v0 = invertV ? 1f : 0f;
             float v1 = invertV ? 0f : 1f;
 
