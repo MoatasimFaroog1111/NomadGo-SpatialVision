@@ -1,54 +1,52 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace NomadGo.AppShell
 {
     /// <summary>
-    /// CameraFix v8 — Root-cause fixes:
+    /// CameraFix v9 — Complete rewrite using Canvas+RawImage (Unity's recommended approach).
     ///
-    /// BLACK SCREEN: ARCore was taking exclusive camera access when arSessionObject
-    ///   was activated. Fixed in AppManager (arSessionObject never activated).
-    ///   Additional guard: disable ALL AR components + other cameras in Awake().
+    /// Previous approach (OnPostRender + GL) was replaced because:
+    ///  - GL UV coordinate system differs between GLES and Vulkan in unpredictable ways
+    ///  - OnPostRender can be silently skipped when the camera isn't the final renderer
+    ///  - No reliable way to know which UV flip to apply at runtime
     ///
-    /// CAMERA FLIP: Added runtime UV mode selector (8 modes). User taps the
-    ///   on-screen "UV" button to cycle until image appears correct. Mode saved
-    ///   in PlayerPrefs so it persists across sessions.
+    /// New approach (Canvas + RawImage):
+    ///  - Unity's UI system handles OES → display conversion internally
+    ///  - flipY formula from official Unity docs:
+    ///      flipY = (videoVerticallyMirrored != SystemInfo.graphicsUVStartsAtTop)
+    ///  - Rotation handled via RectTransform.localRotation (no manual UV math)
+    ///  - Scale-to-fill handles portrait/landscape aspect ratio mismatch
+    ///  - Works identically on GLES and Vulkan
     ///
-    /// Modes for rotAngle=90 (portrait, back camera):
-    ///   0 = original   1 = V-flip   2 = U-flip   3 = UV-flip (180°)
-    ///   4 = swap UVs   5 = swap+Vf  6 = swap+Uf  7 = swap+UVf
+    /// Black screen fix: ARSession disabled in AppManager so ARCore never
+    /// steals the camera device from WebCamTexture.
     /// </summary>
     [RequireComponent(typeof(Camera))]
     public class CameraFix : MonoBehaviour
     {
-        private Camera       cam;
+        private Camera cam;
         private WebCamTexture webCamTexture;
         private RenderTexture blitRT;
-        private Material      drawMat;
-        private bool          cameraReady = false;
-        private int           rotAngle    = 0;
-        private bool          isMirrored  = false;
-        private int           uvMode      = 0; // 0-7, saved in PlayerPrefs
+        private RawImage rawImage;
+        private bool cameraReady = false;
+        private string errorMsg = "";
 
         public WebCamTexture CameraTexture => webCamTexture;
-        public bool          IsReady       => cameraReady;
+        public bool IsReady => cameraReady;
 
         private void Awake()
         {
-            // Load saved UV preference
-            uvMode = PlayerPrefs.GetInt("CameraUVMode", 0);
-
             cam = GetComponent<Camera>();
-            if (cam != null)
-            {
-                cam.clearFlags    = CameraClearFlags.SolidColor;
-                cam.backgroundColor = Color.black;
-                cam.allowHDR      = false;
-                cam.allowMSAA     = false;
-                cam.depth         = 100; // Render LAST
-            }
+            // Minimal camera setup — just provides the black background under the Canvas
+            cam.clearFlags    = CameraClearFlags.SolidColor;
+            cam.backgroundColor = Color.black;
+            cam.allowHDR      = false;
+            cam.allowMSAA     = false;
+            cam.depth         = -10;
 
-            // Disable every AR component so ARCore cannot steal the camera device
+            // Kill every AR component that could steal the camera device
             foreach (var mb in FindObjectsOfType<MonoBehaviour>())
             {
                 if (mb == null) continue;
@@ -63,12 +61,37 @@ namespace NomadGo.AppShell
                 }
             }
 
-            // Disable all cameras except this one
+            // Disable all other cameras
             foreach (var c in FindObjectsOfType<Camera>())
             {
-                if (c == cam) continue;
-                c.enabled = false;
+                if (c != cam) { c.enabled = false; }
             }
+
+            // Build the fullscreen camera display layer
+            BuildCameraCanvas();
+        }
+
+        private void BuildCameraCanvas()
+        {
+            var canvasGO = new GameObject("[CameraCanvas]");
+            DontDestroyOnLoad(canvasGO);
+
+            var canvas = canvasGO.AddComponent<Canvas>();
+            canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = -1000; // Behind all other UI
+
+            canvasGO.AddComponent<CanvasScaler>();
+
+            var imgGO = new GameObject("[CameraImage]");
+            imgGO.transform.SetParent(canvasGO.transform, false);
+            rawImage = imgGO.AddComponent<RawImage>();
+            rawImage.color = Color.black; // Black until camera is ready
+
+            var rt = rawImage.GetComponent<RectTransform>();
+            rt.anchorMin        = Vector2.zero;
+            rt.anchorMax        = Vector2.one;
+            rt.sizeDelta        = Vector2.zero;
+            rt.anchoredPosition = Vector2.zero;
         }
 
         private void Start() => StartCoroutine(StartCamera());
@@ -76,12 +99,15 @@ namespace NomadGo.AppShell
         private IEnumerator StartCamera()
         {
             yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
+
             if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
             {
-                Debug.LogError("[CameraFix] Camera permission denied!");
+                errorMsg = "Camera permission denied";
+                Debug.LogError("[CameraFix] " + errorMsg);
                 yield break;
             }
 
+            // Find back camera
             string camName = "";
             foreach (var d in WebCamTexture.devices)
             {
@@ -90,153 +116,107 @@ namespace NomadGo.AppShell
             }
             if (string.IsNullOrEmpty(camName) && WebCamTexture.devices.Length > 0)
                 camName = WebCamTexture.devices[0].name;
+
             if (string.IsNullOrEmpty(camName))
             {
-                Debug.LogError("[CameraFix] No camera device found!");
+                errorMsg = "No camera device found";
+                Debug.LogError("[CameraFix] " + errorMsg);
                 yield break;
             }
 
+            Debug.Log($"[CameraFix] Opening camera: {camName}");
             webCamTexture = new WebCamTexture(camName, 1280, 720, 30);
             webCamTexture.Play();
 
-            float timeout = 10f;
+            // Wait up to 30 s for the camera to deliver real frames
+            float timeout = 30f;
             while (webCamTexture.width <= 16)
             {
                 timeout -= Time.deltaTime;
-                if (timeout <= 0) { Debug.LogError("[CameraFix] Camera timeout!"); yield break; }
+                if (timeout <= 0)
+                {
+                    errorMsg = $"Camera timeout (w={webCamTexture.width} playing={webCamTexture.isPlaying})";
+                    Debug.LogError("[CameraFix] " + errorMsg);
+                    yield break;
+                }
                 yield return null;
             }
-            yield return new WaitForSeconds(0.3f);
 
-            rotAngle   = webCamTexture.videoRotationAngle;
-            isMirrored = webCamTexture.videoVerticallyMirrored;
+            // Extra stabilisation frame
+            yield return new WaitForSeconds(0.5f);
 
-            Debug.Log($"[CameraFix] Ready: {webCamTexture.width}x{webCamTexture.height} " +
-                      $"rot={rotAngle} mirror={isMirrored} " +
-                      $"uvStartsAtTop={SystemInfo.graphicsUVStartsAtTop} " +
-                      $"api={SystemInfo.graphicsDeviceType}");
+            int  rotAngle = webCamTexture.videoRotationAngle;
+            bool mirror   = webCamTexture.videoVerticallyMirrored;
 
-            blitRT = new RenderTexture(webCamTexture.width, webCamTexture.height, 0, RenderTextureFormat.ARGB32);
+            // Official Unity formula: flip Y when mirrored XOR graphicsUVStartsAtTop
+            // See: docs.unity3d.com/ScriptReference/WebCamTexture-videoVerticallyMirrored
+            bool flipY = (mirror != SystemInfo.graphicsUVStartsAtTop);
+
+            Debug.Log($"[CameraFix] Ready — size={webCamTexture.width}x{webCamTexture.height}" +
+                      $" rot={rotAngle} mirror={mirror}" +
+                      $" uvStartsAtTop={SystemInfo.graphicsUVStartsAtTop}" +
+                      $" flipY={flipY} api={SystemInfo.graphicsDeviceType}");
+
+            // Convert OES → ARGB32 RenderTexture (avoids OES sampling issues in UI shader)
+            blitRT = new RenderTexture(
+                webCamTexture.width, webCamTexture.height, 0, RenderTextureFormat.ARGB32);
             blitRT.Create();
 
-            var shader = Shader.Find("Unlit/Texture");
-            if (shader == null || !shader.isSupported) shader = Shader.Find("Sprites/Default");
-            drawMat = new Material(shader);
+            // Wire up the display
+            rawImage.color   = Color.white; // Show the texture now
+            rawImage.texture = blitRT;
+
+            var rect = rawImage.GetComponent<RectTransform>();
+
+            // Apply rotation — Unity's UI convention: negative angle = CW rotation
+            rect.localRotation = Quaternion.Euler(0f, 0f, -rotAngle);
+
+            // Scale so the image fills the screen (Scale-And-Crop style)
+            float scaleX, scaleY;
+            if (rotAngle == 90 || rotAngle == 270)
+            {
+                // Landscape texture displayed as portrait:
+                // camWidth  maps to screen height direction after rotation
+                // camHeight maps to screen width  direction after rotation
+                float s = Mathf.Max(
+                    (float)Screen.height / webCamTexture.width,
+                    (float)Screen.width  / webCamTexture.height
+                );
+                scaleX = s;
+                scaleY = flipY ? -s : s;
+            }
+            else
+            {
+                float s = Mathf.Max(
+                    (float)Screen.width  / webCamTexture.width,
+                    (float)Screen.height / webCamTexture.height
+                );
+                scaleX = s;
+                scaleY = flipY ? -s : s;
+            }
+
+            rect.localScale = new Vector3(scaleX, scaleY, 1f);
 
             cameraReady = true;
+            Debug.Log($"[CameraFix] Display ready: scale=({scaleX:F2},{scaleY:F2})");
         }
 
         private void Update()
         {
             if (!cameraReady || webCamTexture == null || !webCamTexture.isPlaying) return;
-            // Blit every frame — don't rely on didUpdateThisFrame (unreliable on some Android)
+            // Blit every frame — convert OES → ARGB32 in blitRT
             Graphics.Blit(webCamTexture, blitRT);
-        }
-
-        private void OnPostRender()
-        {
-            if (!cameraReady || blitRT == null || drawMat == null) return;
-
-            drawMat.mainTexture = blitRT;
-            GL.PushMatrix();
-            GL.LoadOrtho();
-            drawMat.SetPass(0);
-            GL.Begin(GL.QUADS);
-
-            // Vertex order: BL(0,0) → BR(1,0) → TR(1,1) → TL(0,1)
-            DrawCameraQuad(rotAngle, isMirrored);
-
-            GL.End();
-            GL.PopMatrix();
-        }
-
-        /// <summary>
-        /// Compute UV for each screen corner, applying uvMode transform on top.
-        /// Base UV table for (rotAngle, isMirrored) → 4 UVs [BL, BR, TR, TL].
-        /// uvMode 0-7 applies the 8 possible flip/swap combinations.
-        /// </summary>
-        private void DrawCameraQuad(int rot, bool mir)
-        {
-            // Base UVs: [BL, BR, TR, TL] for each (rot, mirror) combination
-            // (u, v) with v=0 at bottom (GL convention)
-            Vector2 bl, br, tr, tl;
-
-            if (rot == 0 || rot == 360)
-            {
-                if (mir) { bl=new Vector2(1,1); br=new Vector2(0,1); tr=new Vector2(0,0); tl=new Vector2(1,0); }
-                else     { bl=new Vector2(0,1); br=new Vector2(1,1); tr=new Vector2(1,0); tl=new Vector2(0,0); }
-            }
-            else if (rot == 90)
-            {
-                if (mir) { bl=new Vector2(0,0); br=new Vector2(0,1); tr=new Vector2(1,1); tl=new Vector2(1,0); }
-                else     { bl=new Vector2(1,0); br=new Vector2(1,1); tr=new Vector2(0,1); tl=new Vector2(0,0); }
-            }
-            else if (rot == 180)
-            {
-                if (mir) { bl=new Vector2(0,1); br=new Vector2(1,1); tr=new Vector2(1,0); tl=new Vector2(0,0); }
-                else     { bl=new Vector2(1,0); br=new Vector2(0,0); tr=new Vector2(0,1); tl=new Vector2(1,1); }
-            }
-            else // 270
-            {
-                if (mir) { bl=new Vector2(1,1); br=new Vector2(1,0); tr=new Vector2(0,0); tl=new Vector2(0,1); }
-                else     { bl=new Vector2(0,1); br=new Vector2(0,0); tr=new Vector2(1,0); tl=new Vector2(1,1); }
-            }
-
-            // Apply uvMode transform (0=none, 1=flipV, 2=flipU, 3=flipUV,
-            //                         4=swapUV, 5=swapFlipV, 6=swapFlipU, 7=swapFlipUV)
-            bl = ApplyUVMode(bl);
-            br = ApplyUVMode(br);
-            tr = ApplyUVMode(tr);
-            tl = ApplyUVMode(tl);
-
-            GL.TexCoord2(bl.x, bl.y); GL.Vertex3(0, 0, 0);
-            GL.TexCoord2(br.x, br.y); GL.Vertex3(1, 0, 0);
-            GL.TexCoord2(tr.x, tr.y); GL.Vertex3(1, 1, 0);
-            GL.TexCoord2(tl.x, tl.y); GL.Vertex3(0, 1, 0);
-        }
-
-        private Vector2 ApplyUVMode(Vector2 uv)
-        {
-            float u = uv.x, v = uv.y;
-            switch (uvMode)
-            {
-                case 0: return new Vector2(u,     v    ); // original
-                case 1: return new Vector2(u,   1-v    ); // flip V
-                case 2: return new Vector2(1-u,   v    ); // flip U
-                case 3: return new Vector2(1-u, 1-v    ); // flip UV (180°)
-                case 4: return new Vector2(v,     u    ); // swap UV
-                case 5: return new Vector2(v,   1-u    ); // swap + flip V
-                case 6: return new Vector2(1-v,   u    ); // swap + flip U
-                case 7: return new Vector2(1-v, 1-u    ); // swap + flip UV
-                default: return uv;
-            }
         }
 
         private void OnGUI()
         {
-            // Small diagnostic + UV cycle button — bottom-left corner
-            float w = 180f, h = 36f, pad = 8f;
-            float x = pad;
-            float y = Screen.height - h - pad;
-
-            // Info label
-            if (cameraReady)
+            // Show camera info / error at bottom of screen for debugging
+            if (!cameraReady)
             {
-                GUI.Box(new Rect(x, y - h - 4, w, h),
-                    $"rot={rotAngle} mir={isMirrored} mode={uvMode}");
-            }
-            else
-            {
-                GUI.Box(new Rect(x, y - h - 4, w, h), "Camera starting...");
-            }
-
-            // Cycle button
-            if (GUI.Button(new Rect(x, y, w, h), $"Flip/Rotate (Mode {uvMode}/7)"))
-            {
-                uvMode = (uvMode + 1) % 8;
-                PlayerPrefs.SetInt("CameraUVMode", uvMode);
-                PlayerPrefs.Save();
-                Debug.Log($"[CameraFix] UV mode changed to {uvMode}");
+                string msg = string.IsNullOrEmpty(errorMsg)
+                    ? "Camera starting..."
+                    : "Camera error: " + errorMsg;
+                GUI.Label(new Rect(10, Screen.height - 40, Screen.width - 20, 36), msg);
             }
         }
 
@@ -244,8 +224,12 @@ namespace NomadGo.AppShell
         {
             cameraReady = false;
             if (webCamTexture != null) { webCamTexture.Stop(); webCamTexture = null; }
-            if (blitRT != null) { blitRT.Release(); Destroy(blitRT); blitRT = null; }
-            if (drawMat != null) { Destroy(drawMat); drawMat = null; }
+            if (blitRT != null)
+            {
+                blitRT.Release();
+                Destroy(blitRT);
+                blitRT = null;
+            }
         }
     }
 }
