@@ -10,7 +10,7 @@ jobs:
   buildForAndroid:
     name: Build for Android (Release Signed)
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 90
 
     steps:
       - name: Checkout repository
@@ -23,65 +23,10 @@ jobs:
         uses: actions/cache@v4
         with:
           path: Library
-          key: Library-Android-v3-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          key: Library-Android-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
           restore-keys: |
-            Library-Android-v3-
-
-      - name: Download YOLOv8n ONNX Model
-        run: |
-          pip install ultralytics --quiet
-          python3 << 'PYEOF'
-          from ultralytics import YOLO
-          import shutil, os
-
-          print("Downloading YOLOv8n and exporting to ONNX...")
-          model = YOLO('yolov8n.pt')
-          model.export(format='onnx', imgsz=640, simplify=True, opset=11, dynamic=False)
-
-          os.makedirs('Assets/StreamingAssets/Models', exist_ok=True)
-          shutil.copy('yolov8n.onnx', 'Assets/StreamingAssets/Models/yolov8n.onnx')
-
-          size_mb = os.path.getsize('Assets/StreamingAssets/Models/yolov8n.onnx') / 1024 / 1024
-          print(f'Model ready: {size_mb:.1f} MB -> Assets/StreamingAssets/Models/yolov8n.onnx')
-          PYEOF
-          echo "ONNX model: $(ls -lh Assets/StreamingAssets/Models/yolov8n.onnx)"
-
-      - name: Add UNITY_BARRACUDA scripting define
-        run: |
-          python3 << 'PYEOF'
-          import re
-
-          path = 'ProjectSettings/ProjectSettings.asset'
-          content = open(path).read()
-
-          if 'UNITY_BARRACUDA' in content:
-              print('UNITY_BARRACUDA already present')
-          elif 'scriptingDefineSymbols: {}' in content:
-              lines = '\n'.join(f'    {p}: UNITY_BARRACUDA' for p in ['1','7','13','19','20'])
-              content = content.replace('scriptingDefineSymbols: {}',
-                                        f'scriptingDefineSymbols:\n{lines}')
-              open(path, 'w').write(content)
-              print('Added UNITY_BARRACUDA (was empty dict)')
-          else:
-              def add_define(m):
-                  v = m.group(2).strip()
-                  new_v = f'{v};UNITY_BARRACUDA' if v else 'UNITY_BARRACUDA'
-                  # Remove any old Sentis/Barracuda defines first
-                  new_v = new_v.replace('UNITY_SENTIS;', '').replace(';UNITY_SENTIS', '').replace('UNITY_SENTIS', '')
-                  return m.group(1) + new_v.strip(';')
-              for p in ['1','7','13','19','20']:
-                  pattern = rf'(    {p}: )([^\n]*)'
-                  if re.search(pattern, content):
-                      content = re.sub(pattern, add_define, content)
-                  else:
-                      content = re.sub(r'(scriptingDefineSymbols:\n)',
-                                       rf'\g<1>    {p}: UNITY_BARRACUDA\n', content)
-              open(path, 'w').write(content)
-              print('Added UNITY_BARRACUDA to existing defines')
-
-          found = [l.strip() for l in open(path) if 'UNITY_BARRACUDA' in l or 'UNITY_SENTIS' in l]
-          print('Result:', found[:4])
-          PYEOF
+            Library-Android-
+            Library-
 
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@main
@@ -119,43 +64,69 @@ jobs:
         run: |
           APK=$(find build/Android -name "*.apk" | head -1)
           echo "Source APK: $APK ($(du -sh $APK | cut -f1))"
+          
+          # Decode keystore
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.keystore
+          
+          # Install tools
           sudo apt-get install -y zipalign apksigner 2>/dev/null || true
-
+          
+          # Step 1: Patch glEsVersion in Manifest (3.0 -> 2.0)
           python3 << 'PYEOF'
-          import zipfile, struct, glob
-
-          apk = glob.glob('build/Android/*.apk')[0]
+          import zipfile, struct, os
+          
+          apk = os.environ.get('APK_PATH', '')
+          if not apk:
+              import glob
+              apk = glob.glob('build/Android/*.apk')[0]
+          
           print(f"Patching: {apk}")
+          
           with zipfile.ZipFile(apk, 'r') as z:
               manifest = bytearray(z.read('AndroidManifest.xml'))
-
+          
           patched = 0
           for i in range(0, len(manifest)-8, 4):
               v = struct.unpack_from('<I', manifest, i)[0]
               if v == 0x00030000 and i >= 4:
-                  if struct.unpack_from('<I', manifest, i-4)[0] == 0x11000008:
+                  p = struct.unpack_from('<I', manifest, i-4)[0]
+                  if p == 0x11000008:
                       struct.pack_into('<I', manifest, i, 0x00020000)
                       patched += 1
-          print(f'Patched {patched} glEsVersion entries')
-
+                      print(f'  Patched glEsVersion at offset {i}')
+          
+          print(f'Total patches: {patched}')
+          
           with zipfile.ZipFile(apk, 'r') as zin:
               with zipfile.ZipFile('/tmp/patched.apk', 'w') as zout:
                   for item in zin.infolist():
-                      data = bytes(manifest) if item.filename == 'AndroidManifest.xml' else zin.read(item.filename)
-                      zout.writestr(item, data)
+                      if item.filename == 'AndroidManifest.xml':
+                          zout.writestr(item, bytes(manifest))
+                      else:
+                          zout.writestr(item, zin.read(item.filename))
+          
+          print('Repacked to /tmp/patched.apk')
           PYEOF
-
-          zipalign -f -p 4 /tmp/patched.apk /tmp/aligned.apk || cp /tmp/patched.apk /tmp/aligned.apk
+          
+          # Step 2: Zipalign
+          zipalign -f -p 4 /tmp/patched.apk /tmp/aligned.apk && echo "Aligned OK" || cp /tmp/patched.apk /tmp/aligned.apk
+          
+          # Step 3: Re-sign
           apksigner sign \
             --ks /tmp/release.keystore \
             --ks-pass "pass:${{ secrets.ANDROID_KEYSTORE_PASS }}" \
             --ks-key-alias "${{ secrets.ANDROID_KEYALIAS_NAME }}" \
             --key-pass "pass:${{ secrets.ANDROID_KEYALIAS_PASS }}" \
-            --out /tmp/final.apk /tmp/aligned.apk || cp /tmp/aligned.apk /tmp/final.apk
-          sudo cp /tmp/final.apk "$APK" && sudo chmod 644 "$APK"
-          apksigner verify "$APK" && echo "Verified OK" || echo "Verify warning"
-          echo "Final APK: $(ls -lh $APK)"
+            --out /tmp/final.apk \
+            /tmp/aligned.apk && echo "Signed OK" || cp /tmp/aligned.apk /tmp/final.apk
+          
+          # Step 4: Copy back using sudo
+          sudo cp /tmp/final.apk "$APK"
+          sudo chmod 644 "$APK"
+          
+          # Verify
+          apksigner verify "$APK" && echo "Verification PASSED" || echo "Verify warning"
+          echo "Final: $(ls -lh $APK)"
 
       - name: Upload Signed APK Artifact
         uses: actions/upload-artifact@v4
@@ -170,12 +141,13 @@ jobs:
           tag_name: v${{ github.run_number }}
           name: "NomadGo SpatialVision v${{ github.run_number }}"
           body: |
-            ## NomadGo SpatialVision - Real AI Build
-            - Real AI inference: YOLOv8n via Unity Barracuda 3.0.0
-            - Detects: bottle, cup, bowl, food, grocery items (80 COCO classes)
+            ## NomadGo SpatialVision - Release Build
             - Signed Release APK (arm64-v8a)
-            - Min SDK: Android 7.0 (API 24) | Target: Android 14 (API 34)
+            - Min SDK: Android 7.0 (API 24)
+            - Target SDK: Android 14 (API 34)
             - Compatible with Moto G84 5G (Android 15)
+            - OpenGL ES 2.0 (patched for maximum compatibility)
+            - ARCore optional
           files: build/Android/*.apk
           draft: false
           prerelease: false
