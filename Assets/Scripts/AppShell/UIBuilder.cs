@@ -3,14 +3,6 @@ using UnityEngine;
 
 namespace NomadGo.AppShell
 {
-    /// <summary>
-    /// FIXED v4:
-    /// - Polls CountManager every Update() for live item count
-    /// - Shows count and label breakdown in the status bar while scanning
-    /// - Draws colored bounding boxes over detected items in OnGUI
-    /// - Box coordinates transform from landscape detection space → portrait screen
-    /// - All rendering via OnGUI (no UGUI Canvas shaders → no pink screen)
-    /// </summary>
     public class UIBuilder : MonoBehaviour
     {
         private bool isScanning = false;
@@ -23,7 +15,6 @@ namespace NomadGo.AppShell
         private Dictionary<string, int> detectedByLabel = new Dictionary<string, int>();
         private List<Vision.DetectionResult> latestDetections = new List<Vision.DetectionResult>();
 
-        // Box drawing resources (created once)
         private Texture2D boxTex;
         private Texture2D labelBgTex;
         private GUIStyle boxStyle;
@@ -52,12 +43,10 @@ namespace NomadGo.AppShell
         {
             if (!isScanning) return;
 
-            // Poll FrameProcessor for latest detections
             var fp = FindObjectOfType<Vision.FrameProcessor>();
             if (fp != null)
                 latestDetections = fp.LatestDetections ?? new List<Vision.DetectionResult>();
 
-            // Poll CountManager for live count
             var cm = FindObjectOfType<Counting.CountManager>();
             if (cm != null)
             {
@@ -78,8 +67,6 @@ namespace NomadGo.AppShell
                 }
             }
         }
-
-        // ── Style initialisation ──────────────────────────────────────────────────
 
         private void InitStyles()
         {
@@ -164,8 +151,6 @@ namespace NomadGo.AppShell
             boxStylesInit = true;
         }
 
-        // ── Main GUI ──────────────────────────────────────────────────────────────
-
         private void OnGUI()
         {
             InitStyles();
@@ -178,18 +163,15 @@ namespace NomadGo.AppShell
             if (isScanning && latestDetections != null && latestDetections.Count > 0)
                 DrawDetectionBoxes(W, H);
 
-            // ── Status bar (top) ──────────────────────────────────────────────
             GUI.Box(new Rect(0, 0, W, statusHeight), GUIContent.none, statusStyle);
             GUI.Label(new Rect(0, 0, W, statusHeight), statusMessage, statusStyle);
 
-            // ── Reports panel (overlay) ────────────────────────────────────────
             if (showReports)
             {
                 DrawReportsPanel(W, H);
                 return;
             }
 
-            // ── Buttons (bottom) ──────────────────────────────────────────────
             float bottomY = H - m - btnHeight;
             float halfW   = (W - 3 * m) / 2f;
             float row2Y   = bottomY - m - btnHeight;
@@ -206,8 +188,6 @@ namespace NomadGo.AppShell
                 DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
                     "\u25A0  Stop Scan", new Color(0.78f, 0.12f, 0.12f, 0.92f), OnStopScan);
         }
-
-        // ── Detection box drawing ─────────────────────────────────────────────────
 
         private void DrawDetectionBoxes(float W, float H)
         {
@@ -238,7 +218,6 @@ namespace NomadGo.AppShell
                 sw = Mathf.Max(40, sw);
                 sh = Mathf.Max(40, sh);
 
-                // Box outline (4 rectangles = outline)
                 GUI.Box(new Rect(sx,           sy,           sw,     thick), GUIContent.none, boxStyle); // top
                 GUI.Box(new Rect(sx,           sy+sh-thick,  sw,     thick), GUIContent.none, boxStyle); // bottom
                 GUI.Box(new Rect(sx,           sy,           thick,  sh),    GUIContent.none, boxStyle); // left
@@ -249,8 +228,6 @@ namespace NomadGo.AppShell
                 GUI.Label(new Rect(sx, sy - labelH, Mathf.Min(sw, W * 0.55f), labelH), lbl, boxLabelStyle);
             }
         }
-
-        // ── Button helper ─────────────────────────────────────────────────────────
 
         private void DrawButton(Rect rect, string label, Color color, System.Action onClick)
         {
@@ -271,8 +248,6 @@ namespace NomadGo.AppShell
                 onClick?.Invoke();
         }
 
-        // ── Reports panel ─────────────────────────────────────────────────────────
-
         private void DrawReportsPanel(float W, float H)
         {
             float px = 20, py = statusHeight + 10;
@@ -292,8 +267,6 @@ namespace NomadGo.AppShell
             DrawButton(new Rect(px + 20 + bW, bY, bW, btnHeight),
                 "X  Close", new Color(0.71f, 0.24f, 0.24f, 0.92f), () => showReports = false);
         }
-
-        // ── Callbacks ─────────────────────────────────────────────────────────────
 
         private void OnStartScan()
         {

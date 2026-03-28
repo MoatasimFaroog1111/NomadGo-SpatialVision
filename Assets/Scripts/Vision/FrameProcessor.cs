@@ -4,12 +4,6 @@ using UnityEngine;
 
 namespace NomadGo.Vision
 {
-    /// <summary>
-    /// FIXED:
-    /// - Removed hard block that stopped scanning when ONNX model not loaded
-    /// - Scanning now works in stub mode (camera active, no AI detections)
-    /// - Added bounding box coordinate normalization (returns normalized 0..1 coords)
-    /// </summary>
     public class FrameProcessor : MonoBehaviour
     {
         private ONNXInferenceEngine inferenceEngine;
@@ -44,7 +38,6 @@ namespace NomadGo.Vision
 
         public void StartProcessing()
         {
-            // FIXED: Allow scanning even in stub mode (isLoaded = true in stub)
             if (inferenceEngine == null)
             {
                 Debug.LogError("[FrameProcessor] Inference engine not initialized. Call Initialize() first.");

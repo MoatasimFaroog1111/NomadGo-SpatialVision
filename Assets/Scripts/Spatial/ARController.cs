@@ -5,15 +5,6 @@ using System.Collections;
 
 namespace NomadGo.Spatial
 {
-    /// <summary>
-    /// NEW: ARController — manages AR simulation when ARFoundation/ARCore is not available.
-    /// Shows AR-style overlay using camera + bounding boxes.
-    /// Uses device motion sensors to simulate spatial awareness.
-    /// Real ARCore requires:
-    ///   1. ARFoundation package installed in Unity
-    ///   2. ARCore XR Plugin package installed
-    ///   3. Device that supports ARCore
-    /// </summary>
     public class ARController : MonoBehaviour
     {
         private bool isARActive = false;

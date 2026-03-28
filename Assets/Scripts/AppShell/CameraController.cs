@@ -5,11 +5,6 @@ using UnityEngine.XR.ARFoundation;
 
 namespace NomadGo.AppShell
 {
-    /// <summary>
-    /// Robust camera controller for Android.
-    /// Uses ARFoundation when available, falls back to WebCamTexture.
-    /// Handles orientation and flip correction for Moto G84 5G.
-    /// </summary>
     public class CameraController : MonoBehaviour
     {
         [Header("Display")]

@@ -4,11 +4,6 @@ using TMPro;
 
 namespace NomadGo.Viewer
 {
-    /// <summary>
-    /// NEW: 3D Viewer — shows detected objects as 3D boxes overlaid on camera.
-    /// Works WITHOUT ARFoundation by using the depth estimation approach.
-    /// Toggle with the "3D View" button added to UIBuilder.
-    /// </summary>
     public class ThreeDViewer : MonoBehaviour
     {
         [Header("3D Visualization")]

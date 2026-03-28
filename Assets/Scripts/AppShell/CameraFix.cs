@@ -3,14 +3,6 @@ using UnityEngine;
 
 namespace NomadGo.AppShell
 {
-    /// <summary>
-    /// CameraFix v11
-    /// Changes vs v8/v9/v10:
-    ///  - Reverted invertV = SystemInfo.graphicsUVStartsAtTop  (v7 original, proved to show image)
-    ///  - Swapped 90° ↔ 270° UV branches (fixes inverted image when sensor reports opposite CW angle)
-    ///  - Wait 2 s after cam start (better auto-exposure on first frame)
-    ///  - OnGUI diagnostic label in screen centre (below UIBuilder status bar)
-    /// </summary>
     [RequireComponent(typeof(Camera))]
     public class CameraFix : MonoBehaviour
     {
@@ -102,12 +94,10 @@ namespace NomadGo.AppShell
                 yield return null;
             }
 
-            // Wait 2 s for auto-exposure to settle
             yield return new WaitForSeconds(2f);
 
             rotAngle   = webCamTexture.videoRotationAngle;
             isMirrored = webCamTexture.videoVerticallyMirrored;
-            // Use original proven formula: invertV = graphicsUVStartsAtTop
             invertV    = SystemInfo.graphicsUVStartsAtTop;
 
             diagText = $"v11 READY rot={rotAngle} mir={isMirrored} inv={invertV} api={SystemInfo.graphicsDeviceType}";
@@ -125,7 +115,6 @@ namespace NomadGo.AppShell
 
         private void OnGUI()
         {
-            // Small diagnostic label in centre of screen (below UIBuilder status bar)
             var style = new GUIStyle(GUI.skin.label);
             style.fontSize  = 20;
             style.fontStyle = FontStyle.Bold;
@@ -172,13 +161,9 @@ namespace NomadGo.AppShell
                     GL.TexCoord2(0, v0); GL.Vertex3(0, 1, 0);
                 }
             }
-            // ── KEY CHANGE: 90° and 270° branches SWAPPED relative to v7 ──
-            // v7 used 90°-branch for rotAngle==90. Image appeared inverted.
-            // Swapping means the GL mapping that was used for 270° is now used when
             // the device reports 90°, which corrects the inversion.
             else if (rotAngle == 90)
             {
-                // Was the 270° UV mapping in v7:
                 if (isMirrored)
                 {
                     GL.TexCoord2(1, v1); GL.Vertex3(0, 0, 0);
@@ -196,7 +181,6 @@ namespace NomadGo.AppShell
             }
             else if (rotAngle == 270)
             {
-                // Was the 90° UV mapping in v7:
                 if (isMirrored)
                 {
                     GL.TexCoord2(0, v0); GL.Vertex3(0, 0, 0);

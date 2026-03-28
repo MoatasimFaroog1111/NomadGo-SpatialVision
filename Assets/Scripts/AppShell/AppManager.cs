@@ -2,17 +2,12 @@ using UnityEngine;
 
 namespace NomadGo.AppShell
 {
-    /// <summary>
-    /// FIXED: Removed hard dependency on ARSession.
-    /// ARFoundation features are optional — app works without ARCore.
-    /// </summary>
     public class AppManager : MonoBehaviour
     {
         public static AppManager Instance { get; private set; }
 
         [Header("References (all optional)")]
-        [SerializeField] private GameObject arSessionObject; // FIXED: use GameObject instead of ARSession to avoid compile error when ARFoundation not installed
-        [SerializeField] private Camera arCamera;
+        [SerializeField] private GameObject arSessionObject;        [SerializeField] private Camera arCamera;
 
         private AppConfig appConfig;
         private bool isInitialized = false;
@@ -45,7 +40,6 @@ namespace NomadGo.AppShell
             if (configText == null)
             {
                 Debug.LogError("[AppManager] CONFIG.json not found in Resources folder.");
-                // FIXED: Create default config instead of leaving null
                 appConfig = CreateDefaultConfig();
                 return;
             }
@@ -125,7 +119,6 @@ namespace NomadGo.AppShell
                 return;
             }
 
-            // FIXED: Safe null checks for all subsystems
             var diagnosticsManager = FindObjectOfType<Diagnostics.DiagnosticsManager>();
             if (diagnosticsManager != null)
             {
@@ -175,7 +168,6 @@ namespace NomadGo.AppShell
 
             Debug.Log("[AppManager] Starting scan...");
 
-            // FIXED: Safe AR session enable
             if (arSessionObject != null)
                 arSessionObject.SetActive(true);
 

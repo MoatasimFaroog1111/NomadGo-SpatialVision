@@ -12,18 +12,6 @@ using Unity.Barracuda;
 
 namespace NomadGo.Vision
 {
-    /// <summary>
-    /// AI Inference Engine v4 — Unity Barracuda 3.0.0 + YOLOv8n
-    ///
-    /// Real AI: loads yolov8n.onnx from StreamingAssets, runs CPU inference via Barracuda.
-    /// Detects 80 COCO classes (bottle, cup, food, grocery items, etc.)
-    ///
-    /// Barracuda converts ONNX NCHW tensors to NHWC internally.
-    /// YOLOv8n output (1,84,8400) NCHW → (1,1,8400,84) NHWC in Barracuda.
-    /// Access: output[0, 0, anchor, feature]
-    ///
-    /// Falls back to Demo mode if model/package unavailable.
-    /// </summary>
     public class ONNXInferenceEngine : MonoBehaviour
     {
         private string   modelPath;
@@ -46,8 +34,6 @@ namespace NomadGo.Vision
 
         public bool  IsLoaded            => isLoaded;
         public float LastInferenceTimeMs => lastInferenceMs;
-
-        // ── Public API ───────────────────────────────────────────────────────────
 
         public void Initialize(AppShell.ModelConfig config)
         {
@@ -85,8 +71,6 @@ namespace NomadGo.Vision
             return $"class_{classId}";
         }
 
-        // ── Labels ───────────────────────────────────────────────────────────────
-
         private void LoadLabels(string labelsPath)
         {
             string res = labelsPath.Replace(".txt", "").Replace("Models/", "");
@@ -116,8 +100,6 @@ namespace NomadGo.Vision
                 Debug.LogWarning("[ONNXEngine] labels.txt not found — using built-in COCO 80.");
             }
         }
-
-        // ── Async model loading ───────────────────────────────────────────────────
 
         private IEnumerator LoadModelAsync()
         {
@@ -149,10 +131,8 @@ namespace NomadGo.Vision
 #endif
             try
             {
-                // Load ONNX via Barracuda (handles NCHW->NHWC conversion automatically)
                 barracudaModel  = ModelLoader.Load(bytes, verbose: false);
 
-                // Use CSharpBurst (CPU) for Android compatibility
                 barracudaWorker = WorkerFactory.CreateWorker(
                     WorkerFactory.Type.CSharpBurst, barracudaModel);
 
@@ -179,8 +159,6 @@ namespace NomadGo.Vision
             Debug.Log("[ONNXEngine] DEMO mode active.");
         }
 
-        // ── Barracuda inference ──────────────────────────────────────────────────
-
 #if UNITY_BARRACUDA
         private List<DetectionResult> RunBarracudaInference(Texture2D frame)
         {
@@ -195,7 +173,6 @@ namespace NomadGo.Vision
             inputTensor.Dispose();
 
             // Get output — YOLOv8 name: "output0"
-            // Barracuda converts NCHW (1,84,8400) → NHWC (1,1,8400,84)
             Tensor output = barracudaWorker.PeekOutput("output0");
 
             sw.Stop();
@@ -241,7 +218,6 @@ namespace NomadGo.Vision
 
         private List<DetectionResult> ParseYOLOv8Barracuda(Tensor output)
         {
-            // Barracuda converts ONNX NCHW (1,84,8400) → NHWC (1,1,8400,84)
             // Shape: N=1, H=1, W=8400, C=84
             // Features: C 0-3 = cx,cy,w,h (in pixels for 640 input); C 4-83 = class scores
             const int numAnchors = 8400;
@@ -253,11 +229,9 @@ namespace NomadGo.Vision
 
             for (int a = 0; a < numAnchors; a++)
             {
-                // Find max class confidence
                 float maxConf = 0f; int maxCls = 0;
                 for (int c = 0; c < numClasses; c++)
                 {
-                    // Barracuda NHWC indexer: output[batch, h, w, channel]
                     float s = output[0, 0, a, 4 + c];
                     if (s > maxConf) { maxConf = s; maxCls = c; }
                 }
@@ -277,8 +251,6 @@ namespace NomadGo.Vision
         }
 #endif
 
-        // ── IOU utility (used by IOUTracker) ─────────────────────────────────────
-
         public static float ComputeIOU(Rect a, Rect b)
         {
             float x1 = Mathf.Max(a.xMin, b.xMin);
@@ -289,8 +261,6 @@ namespace NomadGo.Vision
             float uni   = a.width * a.height + b.width * b.height - inter;
             return uni > 0f ? inter / uni : 0f;
         }
-
-        // ── NMS ──────────────────────────────────────────────────────────────────
 
         private List<DetectionResult> ApplyNMS(List<DetectionResult> dets)
         {
@@ -314,8 +284,6 @@ namespace NomadGo.Vision
             }
             return kept;
         }
-
-        // ── Demo mode ────────────────────────────────────────────────────────────
 
         private static readonly Rect[] _anchors =
         {
@@ -350,8 +318,6 @@ namespace NomadGo.Vision
             }
             return res;
         }
-
-        // ── Cleanup ──────────────────────────────────────────────────────────────
 
         private void OnDestroy()
         {

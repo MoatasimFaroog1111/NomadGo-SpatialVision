@@ -5,13 +5,6 @@ using NomadGo.Counting;
 
 namespace NomadGo.AROverlay
 {
-    /// <summary>
-    /// FIXED:
-    /// - Bounding box coordinates now scale correctly from 640x640 YOLO space to screen space
-    /// - Added rotation correction for portrait mode (rotAngle=90)
-    /// - Y-axis flip correction (Unity ReadPixels = y-up, OnGUI = y-down)
-    /// - Confidence shown as percentage 0-100
-    /// </summary>
     public class OverlayRenderer : MonoBehaviour
     {
         [Header("Overlay Settings")]
@@ -33,7 +26,6 @@ namespace NomadGo.AROverlay
         private GUIStyle rowStyle;
         private bool stylesInitialized = false;
 
-        // FIXED: Track YOLO input size and camera rotation for correct coordinate mapping
         private int yoloInputW = 640;
         private int yoloInputH = 640;
         private AppShell.CameraFix cameraFix;
@@ -116,10 +108,6 @@ namespace NomadGo.AROverlay
             DrawCountOverlay();
         }
 
-        /// <summary>
-        /// FIXED: Convert YOLO box (in 640x640 space) to screen space,
-        /// accounting for camera rotation and Y-axis direction.
-        /// </summary>
         private Rect YoloBoxToScreen(Rect yoloBox)
         {
             int rotAngle = (cameraFix != null) ? GetCameraRotation() : 0;
@@ -131,7 +119,6 @@ namespace NomadGo.AROverlay
 
             float sx, sy, sw, sh;
 
-            // FIXED: Apply same transform as CameraFix OnPostRender for rotAngle=90
             // In portrait mode (rotAngle=90): texture X → screen Y, texture Y (inverted) → screen X
             if (rotAngle == 90)
             {
@@ -160,7 +147,6 @@ namespace NomadGo.AROverlay
             }
             else // 0 — landscape
             {
-                // FIXED: flip y for ReadPixels vs OnGUI coordinate difference
                 float flippedNy = 1f - ny - nh;
                 sx = nx * Screen.width;
                 sy = flippedNy * Screen.height;
@@ -173,7 +159,6 @@ namespace NomadGo.AROverlay
 
         private int GetCameraRotation()
         {
-            // Access videoRotationAngle via reflection if needed, or cache it
             if (cameraFix == null) return 0;
             var tex = cameraFix.CameraTexture;
             if (tex == null) return 0;
@@ -208,7 +193,6 @@ namespace NomadGo.AROverlay
 
             foreach (var cluster in currentClusters)
             {
-                // FIXED: Convert cluster yCenter from YOLO space to screen space
                 float screenY = (cluster.yCenter / yoloInputH) * Screen.height;
                 GUI.Box(new Rect(0, screenY - 1, Screen.width, 2), GUIContent.none, rowStyle);
 
@@ -219,7 +203,6 @@ namespace NomadGo.AROverlay
 
         private void DrawCountOverlay()
         {
-            // FIXED: Draw count panel at bottom-left, above the scan buttons
             float yOffset = Screen.height - 350f;
             float xOffset = 10f;
 
