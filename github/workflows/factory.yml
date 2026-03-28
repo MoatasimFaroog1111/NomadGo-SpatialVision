@@ -1,0 +1,66 @@
+name: AI Software Factory
+
+# المصنع يعمل تلقائياً عند دفع (Push) الكود أو فتح طلب سحب (Pull Request)
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  # المرحلة الأولى: الفحص والاختبار (Quality Control)
+  quality_check:
+    name: Test and Lint
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install flake8 pytest
+          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+      - name: Lint with flake8
+        run: |
+          # فحص جودة الكود برمجياً
+          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+
+      - name: Run Unit Tests
+        run: |
+          # تشغيل الاختبارات الآلية
+          pytest
+
+  # المرحلة الثانية: بناء المنتج النهائي (Production)
+  build_executable:
+    name: Build Windows Executable
+    needs: quality_check # لن يبدأ البناء إلا بعد نجاح الاختبارات
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install PyInstaller
+        run: pip install pyinstaller
+
+      - name: Build EXE
+        run: |
+          # تحويل الكود إلى ملف تشغيل واحد
+          pyinstaller --onefile main.py
+
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Production-Ready-App
+          path: dist/main.exe
