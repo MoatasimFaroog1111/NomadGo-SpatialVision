@@ -26,7 +26,9 @@
     "max_plane_count": 10
   },
   "sync": {
-    "base_url": "REPLACE_WITH_PRODUCTION_URL/api/pulse",
+    "local_mode": true,
+    "local_storage_path": "Pulses",
+    "base_url": "",
     "pulse_interval_seconds": 10,
     "retry_max_attempts": 5,
     "retry_base_delay_seconds": 2,

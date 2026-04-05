@@ -110,12 +110,14 @@ namespace NomadGo.AppShell
                 },
                 sync = new SyncConfig
                 {
-                    base_url = "http://localhost:5000/api/pulse",
-                    pulse_interval_seconds = 5f,
-                    retry_max_attempts = 5,
+                    local_mode             = true,
+                    local_storage_path     = "Pulses",
+                    base_url               = "",
+                    pulse_interval_seconds = 10f,
+                    retry_max_attempts     = 5,
                     retry_base_delay_seconds = 2f,
-                    retry_max_delay_seconds = 60f,
-                    queue_persistent = true
+                    retry_max_delay_seconds  = 60f,
+                    queue_persistent       = true
                 },
                 storage = new StorageConfig
                 {
