@@ -35,10 +35,12 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
   res.status(500).json({ error: "Internal server error" });
 });
 
-// ── Start ─────────────────────────────────────────────────────────────────────
+// ── Start (only when not in test environment) ─────────────────────────────────
 
-app.listen(PORT, "0.0.0.0", () => {
-  console.log(`[server] NomadGo backend running on port ${PORT}`);
-});
+if (process.env.NODE_ENV !== "test") {
+  app.listen(PORT, "0.0.0.0", () => {
+    console.log(`[server] NomadGo backend running on port ${PORT}`);
+  });
+}
 
 export default app;
