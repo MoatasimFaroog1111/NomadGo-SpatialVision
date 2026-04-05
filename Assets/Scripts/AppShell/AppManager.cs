@@ -2,19 +2,37 @@ using UnityEngine;
 
 namespace NomadGo.AppShell
 {
+    /// <summary>
+    /// Central app lifecycle manager. Owns all subsystem references and
+    /// provides them to other scripts — eliminates FindObjectOfType calls.
+    /// </summary>
     public class AppManager : MonoBehaviour
     {
         public static AppManager Instance { get; private set; }
 
-        [Header("References (all optional)")]
-        [SerializeField] private GameObject arSessionObject;        [SerializeField] private Camera arCamera;
+        [Header("AR")]
+        [SerializeField] private GameObject arSessionObject;
+        [SerializeField] private Camera arCamera;
+
+        [Header("Subsystems (auto-located if not assigned)")]
+        [SerializeField] private Diagnostics.DiagnosticsManager diagnosticsManager;
+        [SerializeField] private Storage.SessionStorage sessionStorage;
+        [SerializeField] private Sync.SyncPulseManager syncPulseManager;
+        [SerializeField] private Vision.FrameProcessor frameProcessor;
+        [SerializeField] private Counting.CountManager countManager;
 
         private AppConfig appConfig;
         private bool isInitialized = false;
 
-        public AppConfig Config => appConfig;
-        public Camera ARCamera => arCamera;
-        public bool IsInitialized => isInitialized;
+        // Public accessors so other scripts never call FindObjectOfType
+        public AppConfig Config                          => appConfig;
+        public Camera ARCamera                           => arCamera;
+        public bool IsInitialized                        => isInitialized;
+        public Diagnostics.DiagnosticsManager Diagnostics => diagnosticsManager;
+        public Storage.SessionStorage SessionStorage     => sessionStorage;
+        public Sync.SyncPulseManager SyncPulse           => syncPulseManager;
+        public Vision.FrameProcessor FrameProcessor      => frameProcessor;
+        public Counting.CountManager CountManager        => countManager;
 
         private void Awake()
         {
@@ -31,8 +49,13 @@ namespace NomadGo.AppShell
 
         private void Start()
         {
+            LocateSubsystems();
             InitializeSubsystems();
         }
+
+        // ------------------------------------------------------------------
+        // Configuration
+        // ------------------------------------------------------------------
 
         private void LoadConfiguration()
         {
@@ -111,6 +134,28 @@ namespace NomadGo.AppShell
             };
         }
 
+        // ------------------------------------------------------------------
+        // Subsystem discovery (runs once at Start)
+        // ------------------------------------------------------------------
+
+        private void LocateSubsystems()
+        {
+            if (diagnosticsManager == null)
+                diagnosticsManager = FindObjectOfType<Diagnostics.DiagnosticsManager>();
+            if (sessionStorage == null)
+                sessionStorage = FindObjectOfType<Storage.SessionStorage>();
+            if (syncPulseManager == null)
+                syncPulseManager = FindObjectOfType<Sync.SyncPulseManager>();
+            if (frameProcessor == null)
+                frameProcessor = FindObjectOfType<Vision.FrameProcessor>();
+            if (countManager == null)
+                countManager = FindObjectOfType<Counting.CountManager>();
+        }
+
+        // ------------------------------------------------------------------
+        // Initialization
+        // ------------------------------------------------------------------
+
         private void InitializeSubsystems()
         {
             if (appConfig == null)
@@ -119,81 +164,77 @@ namespace NomadGo.AppShell
                 return;
             }
 
-            var diagnosticsManager = FindObjectOfType<Diagnostics.DiagnosticsManager>();
             if (diagnosticsManager != null)
             {
                 try { diagnosticsManager.Initialize(appConfig.diagnostics); }
-                catch (System.Exception ex) { Debug.LogError($"[AppManager] DiagnosticsManager init error: {ex.Message}"); }
+                catch (System.Exception ex) { Debug.LogError($"[AppManager] DiagnosticsManager: {ex.Message}"); }
             }
 
-            var sessionStorage = FindObjectOfType<Storage.SessionStorage>();
             if (sessionStorage != null)
             {
                 try { sessionStorage.Initialize(appConfig.storage); }
-                catch (System.Exception ex) { Debug.LogError($"[AppManager] SessionStorage init error: {ex.Message}"); }
+                catch (System.Exception ex) { Debug.LogError($"[AppManager] SessionStorage: {ex.Message}"); }
             }
 
-            var syncManager = FindObjectOfType<Sync.SyncPulseManager>();
-            if (syncManager != null)
+            if (syncPulseManager != null)
             {
-                try { syncManager.Initialize(appConfig.sync); }
-                catch (System.Exception ex) { Debug.LogError($"[AppManager] SyncManager init error: {ex.Message}"); }
+                try { syncPulseManager.Initialize(appConfig.sync); }
+                catch (System.Exception ex) { Debug.LogError($"[AppManager] SyncPulseManager: {ex.Message}"); }
             }
 
-            var visionProcessor = FindObjectOfType<Vision.FrameProcessor>();
-            if (visionProcessor != null)
+            if (frameProcessor != null)
             {
-                try { visionProcessor.Initialize(appConfig.model); }
-                catch (System.Exception ex) { Debug.LogError($"[AppManager] FrameProcessor init error: {ex.Message}"); }
+                try { frameProcessor.Initialize(appConfig.model); }
+                catch (System.Exception ex) { Debug.LogError($"[AppManager] FrameProcessor: {ex.Message}"); }
             }
 
-            var countManager = FindObjectOfType<Counting.CountManager>();
             if (countManager != null)
             {
                 try { countManager.Initialize(appConfig.counting); }
-                catch (System.Exception ex) { Debug.LogError($"[AppManager] CountManager init error: {ex.Message}"); }
+                catch (System.Exception ex) { Debug.LogError($"[AppManager] CountManager: {ex.Message}"); }
             }
 
+            // Inject cross-references after all subsystems are up
+            if (syncPulseManager != null)
+                syncPulseManager.InjectReferences(countManager, sessionStorage);
+
+            if (sessionStorage != null)
+                sessionStorage.InjectReferences(countManager, frameProcessor);
+
+            if (countManager != null)
+                countManager.InjectFrameProcessor(frameProcessor);
+
             isInitialized = true;
-            Debug.Log("[AppManager] Subsystems initialized.");
+            Debug.Log("[AppManager] All subsystems initialized.");
         }
+
+        // ------------------------------------------------------------------
+        // Scan lifecycle
+        // ------------------------------------------------------------------
 
         public void StartScan()
         {
             if (!isInitialized)
             {
                 Debug.LogWarning("[AppManager] Subsystems not ready. Re-initializing...");
+                LocateSubsystems();
                 InitializeSubsystems();
             }
-
-            Debug.Log("[AppManager] Starting scan...");
 
             if (arSessionObject != null)
                 arSessionObject.SetActive(true);
 
-            var sessionStorage = FindObjectOfType<Storage.SessionStorage>();
             sessionStorage?.StartNewSession();
-
-            var visionProcessor = FindObjectOfType<Vision.FrameProcessor>();
-            visionProcessor?.StartProcessing();
-
-            var syncManager = FindObjectOfType<Sync.SyncPulseManager>();
-            syncManager?.StartPulsing();
+            frameProcessor?.StartProcessing();
+            syncPulseManager?.StartPulsing();
 
             Debug.Log("[AppManager] Scan started.");
         }
 
         public void StopScan()
         {
-            Debug.Log("[AppManager] Stopping scan...");
-
-            var visionProcessor = FindObjectOfType<Vision.FrameProcessor>();
-            visionProcessor?.StopProcessing();
-
-            var syncManager = FindObjectOfType<Sync.SyncPulseManager>();
-            syncManager?.StopPulsing();
-
-            var sessionStorage = FindObjectOfType<Storage.SessionStorage>();
+            frameProcessor?.StopProcessing();
+            syncPulseManager?.StopPulsing();
             sessionStorage?.EndCurrentSession();
 
             Debug.Log("[AppManager] Scan stopped.");
