@@ -9,6 +9,8 @@ namespace NomadGo.Counting
         [SerializeField] private IOUTracker iouTracker;
         [SerializeField] private RowClusterEngine rowClusterEngine;
 
+        private FrameProcessor frameProcessor;
+
         private List<RowCluster> currentClusters = new List<RowCluster>();
         private Dictionary<string, int> currentCounts = new Dictionary<string, int>();
         private int totalCount = 0;
@@ -31,13 +33,19 @@ namespace NomadGo.Counting
             iouTracker.Initialize(config.iou_threshold, config.tracking_max_age_frames);
             rowClusterEngine.Initialize(config.row_cluster_vertical_gap, config.row_limit);
 
-            var frameProcessor = FindObjectOfType<FrameProcessor>();
-            if (frameProcessor != null)
-            {
-                frameProcessor.OnDetectionsUpdated += OnNewDetections;
-            }
-
             Debug.Log("[CountManager] Initialized.");
+        }
+
+        /// <summary>Called by AppManager after all subsystems are ready.</summary>
+        public void InjectFrameProcessor(FrameProcessor fp)
+        {
+            if (frameProcessor != null)
+                frameProcessor.OnDetectionsUpdated -= OnNewDetections;
+
+            frameProcessor = fp;
+
+            if (frameProcessor != null)
+                frameProcessor.OnDetectionsUpdated += OnNewDetections;
         }
 
         private void OnNewDetections(List<DetectionResult> detections)
@@ -45,23 +53,22 @@ namespace NomadGo.Counting
             List<DetectionResult> tracked = iouTracker.UpdateTracks(detections);
 
             currentClusters = rowClusterEngine.ClusterDetections(tracked);
-
-            currentCounts = rowClusterEngine.GetCountsByLabel(currentClusters);
-            totalCount = rowClusterEngine.GetTotalCount(currentClusters);
+            currentCounts   = rowClusterEngine.GetCountsByLabel(currentClusters);
+            totalCount      = rowClusterEngine.GetTotalCount(currentClusters);
 
             OnCountsUpdated?.Invoke(totalCount, currentCounts, currentClusters);
 
-            Debug.Log($"[CountManager] Updated — Total: {totalCount}, Rows: {currentClusters.Count}, Active tracks: {iouTracker.ActiveTrackCount}");
+            Debug.Log($"[CountManager] Total: {totalCount}, Rows: {currentClusters.Count}, Tracks: {iouTracker.ActiveTrackCount}");
         }
 
         public CountSnapshot GetSnapshot()
         {
             return new CountSnapshot
             {
-                timestamp = System.DateTime.UtcNow.ToString("o"),
-                totalCount = totalCount,
-                countsByLabel = new Dictionary<string, int>(currentCounts),
-                rowCount = currentClusters.Count,
+                timestamp        = System.DateTime.UtcNow.ToString("o"),
+                totalCount       = totalCount,
+                countsByLabel    = new Dictionary<string, int>(currentCounts),
+                rowCount         = currentClusters.Count,
                 activeTrackCount = iouTracker.ActiveTrackCount
             };
         }
@@ -77,11 +84,8 @@ namespace NomadGo.Counting
 
         private void OnDestroy()
         {
-            var frameProcessor = FindObjectOfType<FrameProcessor>();
             if (frameProcessor != null)
-            {
                 frameProcessor.OnDetectionsUpdated -= OnNewDetections;
-            }
         }
     }
 

@@ -50,10 +50,13 @@ namespace NomadGo.Vision
                 return;
             }
 
-            cameraFix = FindObjectOfType<AppShell.CameraFix>();
+            // Prefer injected reference; fall back to scene search only once
+            if (cameraFix == null)
+                cameraFix = FindObjectOfType<AppShell.CameraFix>();
+
             if (cameraFix == null)
             {
-                Debug.LogError("[FrameProcessor] CameraFix not found! Add CameraFix component to the camera.");
+                Debug.LogError("[FrameProcessor] CameraFix not found. Add CameraFix to the camera GameObject.");
                 return;
             }
 
@@ -61,6 +64,9 @@ namespace NomadGo.Vision
             frameCounter = 0;
             Debug.Log("[FrameProcessor] Processing started.");
         }
+
+        /// <summary>Optional: inject CameraFix directly to avoid scene search.</summary>
+        public void InjectCameraFix(AppShell.CameraFix fix) => cameraFix = fix;
 
         public void StopProcessing()
         {

@@ -1,57 +1,99 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using UnityEngine;
 using UnityEngine.Networking;
 
 namespace NomadGo.Sync
 {
+    /// <summary>
+    /// Manages periodic state snapshots ("pulses").
+    ///
+    /// local_mode = true  → writes JSON files directly to device storage.
+    ///                       No internet connection required. Zero data loss.
+    /// local_mode = false → sends pulses to a remote HTTP endpoint
+    ///                       with exponential-backoff retry.
+    /// </summary>
     public class SyncPulseManager : MonoBehaviour
     {
-        [SerializeField] private NetworkMonitor networkMonitor;
-        [SerializeField] private PulseQueue pulseQueue;
+        // Injected by AppManager
+        private Counting.CountManager  countManager;
+        private Storage.SessionStorage sessionStorage;
 
-        private string baseUrl;
-        private float pulseInterval = 5f;
-        private int retryMaxAttempts = 5;
-        private float retryBaseDelay = 2f;
-        private float retryMaxDelay = 60f;
-        private bool isPulsing = false;
+        // Config
+        private bool   localMode          = true;
+        private string localStoragePath;
+        private string remoteUrl;
+        private float  pulseInterval      = 10f;
+        private int    retryMaxAttempts   = 5;
+        private float  retryBaseDelay     = 2f;
+        private float  retryMaxDelay      = 60f;
+
+        // Runtime state
+        private bool      isPulsing     = false;
         private Coroutine pulseCoroutine;
-        private int totalPulsesSent = 0;
-        private int totalPulsesFailed = 0;
+        private int       totalWritten  = 0;
+        private int       totalFailed   = 0;
 
-        public int TotalPulsesSent => totalPulsesSent;
-        public int TotalPulsesFailed => totalPulsesFailed;
-        public int PendingPulseCount => pulseQueue != null ? pulseQueue.Count : 0;
+        // Remote mode only
+        private NetworkMonitor networkMonitor;
+        private PulseQueue     pulseQueue;
+
+        public int TotalWritten    => totalWritten;
+        public int TotalFailed     => totalFailed;
+        public int PendingCount    => pulseQueue != null ? pulseQueue.Count : 0;
+        public bool IsLocalMode    => localMode;
+
+        // ── Initialization ─────────────────────────────────────────────────
 
         public void Initialize(AppShell.SyncConfig config)
         {
-            baseUrl = config.base_url;
-            pulseInterval = config.pulse_interval_seconds;
-            retryMaxAttempts = config.retry_max_attempts;
-            retryBaseDelay = config.retry_base_delay_seconds;
-            retryMaxDelay = config.retry_max_delay_seconds;
+            localMode         = config.local_mode;
+            pulseInterval     = config.pulse_interval_seconds;
+            retryMaxAttempts  = config.retry_max_attempts;
+            retryBaseDelay    = config.retry_base_delay_seconds;
+            retryMaxDelay     = config.retry_max_delay_seconds;
 
-            if (networkMonitor == null)
+            if (localMode)
+            {
+                string folder = string.IsNullOrEmpty(config.local_storage_path)
+                    ? "Pulses" : config.local_storage_path;
+
+                localStoragePath = Path.Combine(Application.persistentDataPath, folder);
+
+                if (!Directory.Exists(localStoragePath))
+                    Directory.CreateDirectory(localStoragePath);
+
+                Debug.Log($"[SyncPulse] LOCAL mode. Path: {localStoragePath}");
+            }
+            else
+            {
+                remoteUrl = config.base_url;
+
                 networkMonitor = gameObject.AddComponent<NetworkMonitor>();
+                pulseQueue     = gameObject.AddComponent<PulseQueue>();
+                pulseQueue.Initialize(config.queue_persistent);
+                networkMonitor.OnNetworkStatusChanged += OnNetworkStatusChanged;
 
-            if (pulseQueue == null)
-                pulseQueue = gameObject.AddComponent<PulseQueue>();
-
-            pulseQueue.Initialize(config.queue_persistent);
-
-            networkMonitor.OnNetworkStatusChanged += OnNetworkStatusChanged;
-
-            Debug.Log($"[SyncPulse] Initialized. URL: {baseUrl}, Interval: {pulseInterval}s");
+                Debug.Log($"[SyncPulse] REMOTE mode. URL: {remoteUrl}");
+            }
         }
+
+        public void InjectReferences(Counting.CountManager cm, Storage.SessionStorage ss)
+        {
+            countManager   = cm;
+            sessionStorage = ss;
+        }
+
+        // ── Lifecycle ──────────────────────────────────────────────────────
 
         public void StartPulsing()
         {
             if (isPulsing) return;
-            isPulsing = true;
+            isPulsing      = true;
             pulseCoroutine = StartCoroutine(PulseLoop());
-            Debug.Log("[SyncPulse] Pulsing started.");
+            Debug.Log("[SyncPulse] Started.");
         }
 
         public void StopPulsing()
@@ -62,8 +104,10 @@ namespace NomadGo.Sync
                 StopCoroutine(pulseCoroutine);
                 pulseCoroutine = null;
             }
-            Debug.Log("[SyncPulse] Pulsing stopped.");
+            Debug.Log($"[SyncPulse] Stopped. Written={totalWritten}, Failed={totalFailed}");
         }
+
+        // ── Pulse loop ─────────────────────────────────────────────────────
 
         private IEnumerator PulseLoop()
         {
@@ -71,130 +115,242 @@ namespace NomadGo.Sync
             {
                 yield return new WaitForSeconds(pulseInterval);
 
-                EnqueueCurrentState();
+                PulseData pulse = BuildPulse();
+                if (pulse == null) continue;
 
-                if (networkMonitor.IsOnline)
-                {
-                    yield return ProcessQueue();
-                }
+                if (localMode)
+                    WriteLocal(pulse);
                 else
-                {
-                    Debug.Log("[SyncPulse] Offline — pulse queued for later.");
-                }
+                    yield return SendRemote(pulse);
             }
         }
 
-        private void EnqueueCurrentState()
+        // ── Local mode ─────────────────────────────────────────────────────
+
+        private void WriteLocal(PulseData pulse)
         {
-            var countManager = FindObjectOfType<Counting.CountManager>();
-            var sessionStorage = FindObjectOfType<Storage.SessionStorage>();
-
-            if (countManager == null || sessionStorage == null) return;
-            if (sessionStorage.CurrentSession == null) return;
-
-            PulseData pulse = new PulseData
+            try
             {
-                sessionId = sessionStorage.CurrentSession.sessionId,
-                timestamp = DateTime.UtcNow.ToString("o"),
-                totalCount = countManager.TotalCount,
-                rowCount = countManager.CurrentClusters.Count,
-                deviceId = SystemInfo.deviceUniqueIdentifier
-            };
+                string fileName = $"pulse_{pulse.sessionId}_{pulse.timestamp.Replace(":", "-").Replace(".", "-")}.json";
+                string filePath = Path.Combine(localStoragePath, fileName);
+                string json     = JsonUtility.ToJson(pulse, true);
 
-            foreach (var kvp in countManager.CurrentCounts)
+                File.WriteAllText(filePath, json);
+                totalWritten++;
+
+                UpdateLocalIndex(pulse);
+
+                Debug.Log($"[SyncPulse] Written locally: {fileName}  (total={totalWritten})");
+            }
+            catch (Exception ex)
             {
-                pulse.countsByLabel.Add(new Storage.LabelCount
+                totalFailed++;
+                Debug.LogError($"[SyncPulse] Local write failed: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Maintains a lightweight index file so the UI/reports can quickly
+        /// list all sessions without reading every pulse file.
+        /// </summary>
+        private void UpdateLocalIndex(PulseData pulse)
+        {
+            string indexPath = Path.Combine(localStoragePath, "index.json");
+
+            LocalPulseIndex index;
+            if (File.Exists(indexPath))
+            {
+                try   { index = JsonUtility.FromJson<LocalPulseIndex>(File.ReadAllText(indexPath)); }
+                catch { index = new LocalPulseIndex(); }
+            }
+            else
+            {
+                index = new LocalPulseIndex();
+            }
+
+            // Upsert session summary
+            bool found = false;
+            for (int i = 0; i < index.sessions.Count; i++)
+            {
+                if (index.sessions[i].sessionId == pulse.sessionId)
                 {
-                    label = kvp.Key,
-                    count = kvp.Value
+                    index.sessions[i].lastPulseTime  = pulse.timestamp;
+                    index.sessions[i].totalCount     = pulse.totalCount;
+                    index.sessions[i].pulseCount++;
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+            {
+                index.sessions.Add(new LocalSessionSummary
+                {
+                    sessionId      = pulse.sessionId,
+                    deviceId       = pulse.deviceId,
+                    firstPulseTime = pulse.timestamp,
+                    lastPulseTime  = pulse.timestamp,
+                    totalCount     = pulse.totalCount,
+                    pulseCount     = 1
                 });
             }
 
-            pulseQueue.Enqueue(pulse);
+            File.WriteAllText(indexPath, JsonUtility.ToJson(index, true));
         }
 
-        private IEnumerator ProcessQueue()
+        // ── Remote mode ────────────────────────────────────────────────────
+
+        private IEnumerator SendRemote(PulseData pulse)
         {
-            while (pulseQueue.Count > 0 && networkMonitor.IsOnline)
+            pulseQueue.Enqueue(pulse);
+
+            if (networkMonitor != null && networkMonitor.IsOnline)
+                yield return FlushQueue();
+            else
+                Debug.Log("[SyncPulse] Offline — queued for later.");
+        }
+
+        private IEnumerator FlushQueue()
+        {
+            while (pulseQueue.Count > 0 &&
+                   networkMonitor != null && networkMonitor.IsOnline)
             {
                 PulseData pulse = pulseQueue.Peek();
                 if (pulse == null) break;
 
                 bool success = false;
-                yield return SendPulse(pulse, (result) => { success = result; });
+                yield return PostPulse(pulse, r => success = r);
+
+                pulseQueue.Dequeue();
 
                 if (success)
                 {
-                    pulseQueue.Dequeue();
-                    totalPulsesSent++;
-                    Debug.Log($"[SyncPulse] Pulse sent successfully: {pulse.pulseId}");
+                    totalWritten++;
+                    Debug.Log($"[SyncPulse] Sent: {pulse.pulseId}");
+                }
+                else if (pulse.attemptCount >= retryMaxAttempts)
+                {
+                    totalFailed++;
+                    Debug.LogWarning($"[SyncPulse] Dropped after {retryMaxAttempts} attempts: {pulse.pulseId}");
                 }
                 else
                 {
-                    if (pulse.attemptCount >= retryMaxAttempts)
-                    {
-                        pulseQueue.Dequeue();
-                        totalPulsesFailed++;
-                        Debug.LogWarning($"[SyncPulse] Pulse failed after {retryMaxAttempts} attempts: {pulse.pulseId}");
-                    }
-                    else
-                    {
-                        pulseQueue.Dequeue();
-                        pulseQueue.RequeueWithRetry(pulse);
-
-                        float delay = Mathf.Min(
-                            retryBaseDelay * Mathf.Pow(2, pulse.attemptCount),
-                            retryMaxDelay
-                        );
-                        Debug.Log($"[SyncPulse] Retry in {delay}s for pulse: {pulse.pulseId}");
-                        yield return new WaitForSeconds(delay);
-                    }
+                    pulseQueue.RequeueWithRetry(pulse);
+                    float delay = Mathf.Min(retryBaseDelay * Mathf.Pow(2, pulse.attemptCount), retryMaxDelay);
+                    Debug.Log($"[SyncPulse] Retry in {delay}s: {pulse.pulseId}");
+                    yield return new WaitForSeconds(delay);
                 }
             }
         }
 
-        private IEnumerator SendPulse(PulseData pulse, Action<bool> callback)
+        private IEnumerator PostPulse(PulseData pulse, Action<bool> callback)
         {
-            string json = JsonUtility.ToJson(pulse);
-
-            using (UnityWebRequest request = new UnityWebRequest(baseUrl, "POST"))
+            using (var req = new UnityWebRequest(remoteUrl, "POST"))
             {
-                byte[] bodyRaw = System.Text.Encoding.UTF8.GetBytes(json);
-                request.uploadHandler = new UploadHandlerRaw(bodyRaw);
-                request.downloadHandler = new DownloadHandlerBuffer();
-                request.SetRequestHeader("Content-Type", "application/json");
-                request.timeout = 10;
+                byte[] body = System.Text.Encoding.UTF8.GetBytes(JsonUtility.ToJson(pulse));
+                req.uploadHandler   = new UploadHandlerRaw(body);
+                req.downloadHandler = new DownloadHandlerBuffer();
+                req.SetRequestHeader("Content-Type", "application/json");
+                req.timeout = 10;
 
-                yield return request.SendWebRequest();
+                yield return req.SendWebRequest();
+                callback(req.result == UnityWebRequest.Result.Success);
 
-                if (request.result == UnityWebRequest.Result.Success)
-                {
-                    callback(true);
-                }
-                else
-                {
-                    Debug.LogWarning($"[SyncPulse] Send failed: {request.error}");
-                    callback(false);
-                }
+                if (req.result != UnityWebRequest.Result.Success)
+                    Debug.LogWarning($"[SyncPulse] HTTP error: {req.error}");
             }
         }
 
         private void OnNetworkStatusChanged(bool online)
         {
-            if (online && isPulsing && pulseQueue.Count > 0)
+            if (online && isPulsing && pulseQueue != null && pulseQueue.Count > 0)
             {
-                Debug.Log("[SyncPulse] Network restored — processing queued pulses...");
-                StartCoroutine(ProcessQueue());
+                Debug.Log("[SyncPulse] Network restored — flushing queue...");
+                StartCoroutine(FlushQueue());
             }
+        }
+
+        // ── Helpers ────────────────────────────────────────────────────────
+
+        private PulseData BuildPulse()
+        {
+            if (countManager == null || sessionStorage == null) return null;
+            if (sessionStorage.CurrentSession == null) return null;
+
+            var pulse = new PulseData
+            {
+                pulseId    = Guid.NewGuid().ToString("N").Substring(0, 8),
+                sessionId  = sessionStorage.CurrentSession.sessionId,
+                timestamp  = DateTime.UtcNow.ToString("o"),
+                totalCount = countManager.TotalCount,
+                rowCount   = countManager.CurrentClusters.Count,
+                deviceId   = SystemInfo.deviceUniqueIdentifier,
+                status     = "ok"
+            };
+
+            foreach (var kvp in countManager.CurrentCounts)
+                pulse.countsByLabel.Add(new Storage.LabelCount { label = kvp.Key, count = kvp.Value });
+
+            return pulse;
+        }
+
+        // ── Local index read (for Reports UI) ──────────────────────────────
+
+        /// <summary>Returns the local pulse index. Returns null if remote mode.</summary>
+        public LocalPulseIndex GetLocalIndex()
+        {
+            if (!localMode) return null;
+
+            string indexPath = Path.Combine(localStoragePath, "index.json");
+            if (!File.Exists(indexPath)) return new LocalPulseIndex();
+
+            try   { return JsonUtility.FromJson<LocalPulseIndex>(File.ReadAllText(indexPath)); }
+            catch { return new LocalPulseIndex(); }
+        }
+
+        /// <summary>Returns all pulse files for a session as a list.</summary>
+        public List<PulseData> GetLocalPulses(string sessionId)
+        {
+            var list = new List<PulseData>();
+            if (!localMode || !Directory.Exists(localStoragePath)) return list;
+
+            foreach (string f in Directory.GetFiles(localStoragePath, $"pulse_{sessionId}_*.json"))
+            {
+                try
+                {
+                    string json = File.ReadAllText(f);
+                    list.Add(JsonUtility.FromJson<PulseData>(json));
+                }
+                catch { /* skip corrupt file */ }
+            }
+
+            return list;
         }
 
         private void OnDestroy()
         {
             StopPulsing();
             if (networkMonitor != null)
-            {
                 networkMonitor.OnNetworkStatusChanged -= OnNetworkStatusChanged;
-            }
         }
+    }
+
+    // ── Data models for local index ─────────────────────────────────────────
+
+    [Serializable]
+    public class LocalPulseIndex
+    {
+        public List<LocalSessionSummary> sessions = new List<LocalSessionSummary>();
+    }
+
+    [Serializable]
+    public class LocalSessionSummary
+    {
+        public string sessionId;
+        public string deviceId;
+        public string firstPulseTime;
+        public string lastPulseTime;
+        public int    totalCount;
+        public int    pulseCount;
     }
 }

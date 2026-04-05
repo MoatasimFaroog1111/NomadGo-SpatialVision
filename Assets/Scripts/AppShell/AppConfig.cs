@@ -55,7 +55,13 @@ namespace NomadGo.AppShell
     [Serializable]
     public class SyncConfig
     {
-        public string base_url;
+        /// <summary>
+        /// true  → write pulses to device storage (no network required).
+        /// false → send pulses to base_url via HTTP POST.
+        /// </summary>
+        public bool local_mode;
+        public string local_storage_path;   // used when local_mode = true
+        public string base_url;             // used when local_mode = false
         public float pulse_interval_seconds;
         public int retry_max_attempts;
         public float retry_base_delay_seconds;

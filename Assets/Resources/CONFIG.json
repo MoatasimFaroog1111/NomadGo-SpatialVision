@@ -1,8 +1,8 @@
 {
   "app": {
     "name": "NomadGo-SpatialVision",
-    "version": "1.0.0",
-    "build": 1
+    "version": "1.1.0",
+    "build": 2
   },
   "model": {
     "path": "Models/yolov8n.onnx",
@@ -26,8 +26,10 @@
     "max_plane_count": 10
   },
   "sync": {
-    "base_url": "http://localhost:5000/api/pulse",
-    "pulse_interval_seconds": 5,
+    "local_mode": true,
+    "local_storage_path": "Pulses",
+    "base_url": "",
+    "pulse_interval_seconds": 10,
     "retry_max_attempts": 5,
     "retry_base_delay_seconds": 2,
     "retry_max_delay_seconds": 60,
@@ -39,12 +41,12 @@
     "session_export_path": "Sessions/"
   },
   "diagnostics": {
-    "show_fps_overlay": true,
-    "log_inference_time": true,
-    "show_memory_monitor": true,
+    "show_fps_overlay": false,
+    "log_inference_time": false,
+    "show_memory_monitor": false,
     "log_tracking_events": false,
     "verbose_mode": false
   },
-  "_build_trigger": "fix-opengl-es-20260318075057",
-  "_build": "manifest-fix-gles2-081715"
+  "_build_trigger": "production-roadmap-20260405",
+  "_build": "v1.1.0-prod"
 }

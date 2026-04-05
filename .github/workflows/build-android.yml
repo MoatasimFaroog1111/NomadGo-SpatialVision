@@ -7,9 +7,30 @@ on:
   workflow_dispatch: {}
 
 jobs:
+  # ── Backend tests (Node/Vitest) ─────────────────────────────────────────────
+  test-backend:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run backend tests
+        run: npm test
+
+  # ── Unity Android build ─────────────────────────────────────────────────────
   buildForAndroid:
     name: Build for Android (Release Signed)
     runs-on: ubuntu-latest
+    needs: test-backend
     timeout-minutes: 90
 
     steps:
@@ -42,8 +63,8 @@ jobs:
       - name: Build Android APK (Release)
         uses: game-ci/unity-builder@v4
         env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_LICENSE:  ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           unityVersion: 2022.3.22f1
@@ -53,9 +74,11 @@ jobs:
           androidMinSdkVersion: AndroidApiLevel24
           androidArchitecture: ARM64
           androidKeystoreBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          androidKeystorePass: ${{ secrets.ANDROID_KEYSTORE_PASS }}
-          androidKeyaliasName: ${{ secrets.ANDROID_KEYALIAS_NAME }}
-          androidKeyaliasPass: ${{ secrets.ANDROID_KEYALIAS_PASS }}
+          androidKeystorePass:   ${{ secrets.ANDROID_KEYSTORE_PASS }}
+          androidKeyaliasName:   ${{ secrets.ANDROID_KEYALIAS_NAME }}
+          androidKeyaliasPass:   ${{ secrets.ANDROID_KEYALIAS_PASS }}
+          # Enable Barracuda (ONNX) for real AI inference
+          customParameters: -define UNITY_BARRACUDA
           buildName: NomadGo-SpatialVision
           versioning: Semantic
           allowDirtyBuild: true
@@ -64,27 +87,23 @@ jobs:
         run: |
           APK=$(find build/Android -name "*.apk" | head -1)
           echo "Source APK: $APK ($(du -sh $APK | cut -f1))"
-          
+
           # Decode keystore
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.keystore
-          
+
           # Install tools
           sudo apt-get install -y zipalign apksigner 2>/dev/null || true
-          
+
           # Step 1: Patch glEsVersion in Manifest (3.0 -> 2.0)
           python3 << 'PYEOF'
-          import zipfile, struct, os
-          
-          apk = os.environ.get('APK_PATH', '')
-          if not apk:
-              import glob
-              apk = glob.glob('build/Android/*.apk')[0]
-          
+          import zipfile, struct, os, glob
+
+          apk = glob.glob('build/Android/*.apk')[0]
           print(f"Patching: {apk}")
-          
+
           with zipfile.ZipFile(apk, 'r') as z:
               manifest = bytearray(z.read('AndroidManifest.xml'))
-          
+
           patched = 0
           for i in range(0, len(manifest)-8, 4):
               v = struct.unpack_from('<I', manifest, i)[0]
@@ -94,9 +113,9 @@ jobs:
                       struct.pack_into('<I', manifest, i, 0x00020000)
                       patched += 1
                       print(f'  Patched glEsVersion at offset {i}')
-          
+
           print(f'Total patches: {patched}')
-          
+
           with zipfile.ZipFile(apk, 'r') as zin:
               with zipfile.ZipFile('/tmp/patched.apk', 'w') as zout:
                   for item in zin.infolist():
@@ -104,13 +123,13 @@ jobs:
                           zout.writestr(item, bytes(manifest))
                       else:
                           zout.writestr(item, zin.read(item.filename))
-          
+
           print('Repacked to /tmp/patched.apk')
           PYEOF
-          
+
           # Step 2: Zipalign
           zipalign -f -p 4 /tmp/patched.apk /tmp/aligned.apk && echo "Aligned OK" || cp /tmp/patched.apk /tmp/aligned.apk
-          
+
           # Step 3: Re-sign
           apksigner sign \
             --ks /tmp/release.keystore \
@@ -119,12 +138,11 @@ jobs:
             --key-pass "pass:${{ secrets.ANDROID_KEYALIAS_PASS }}" \
             --out /tmp/final.apk \
             /tmp/aligned.apk && echo "Signed OK" || cp /tmp/aligned.apk /tmp/final.apk
-          
-          # Step 4: Copy back using sudo
+
+          # Step 4: Copy back
           sudo cp /tmp/final.apk "$APK"
           sudo chmod 644 "$APK"
-          
-          # Verify
+
           apksigner verify "$APK" && echo "Verification PASSED" || echo "Verify warning"
           echo "Final: $(ls -lh $APK)"
 
@@ -148,6 +166,7 @@ jobs:
             - Compatible with Moto G84 5G (Android 15)
             - OpenGL ES 2.0 (patched for maximum compatibility)
             - ARCore optional
+            - Barracuda ONNX inference enabled (real AI)
           files: build/Android/*.apk
           draft: false
           prerelease: false

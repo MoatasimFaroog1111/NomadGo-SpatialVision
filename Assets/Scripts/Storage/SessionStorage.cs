@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 namespace NomadGo.Storage
@@ -9,42 +8,50 @@ namespace NomadGo.Storage
     {
         [SerializeField] private JSONStorageProvider storageProvider;
 
+        private Counting.CountManager countManager;
+        private Vision.FrameProcessor frameProcessor;
+
         private SessionData currentSession;
         private float autosaveInterval = 2f;
-        private float autosaveTimer = 0f;
-        private bool isSessionActive = false;
+        private float autosaveTimer   = 0f;
+        private bool  isSessionActive  = false;
 
-        public SessionData CurrentSession => currentSession;
-        public bool IsSessionActive => isSessionActive;
+        public SessionData CurrentSession  => currentSession;
+        public bool        IsSessionActive => isSessionActive;
 
         public void Initialize(AppShell.StorageConfig config)
         {
             autosaveInterval = config.autosave_interval_seconds;
 
             if (storageProvider == null)
-            {
                 storageProvider = gameObject.AddComponent<JSONStorageProvider>();
-            }
 
             storageProvider.Initialize(config.session_export_path);
-            Debug.Log($"[SessionStorage] Initialized. Autosave interval: {autosaveInterval}s");
+            Debug.Log($"[SessionStorage] Initialized. Autosave: {autosaveInterval}s");
+        }
+
+        /// <summary>Called by AppManager after all subsystems are ready.</summary>
+        public void InjectReferences(Counting.CountManager cm, Vision.FrameProcessor fp)
+        {
+            countManager   = cm;
+            frameProcessor = fp;
         }
 
         public void StartNewSession()
         {
             currentSession = new SessionData
             {
-                sessionId = Guid.NewGuid().ToString("N").Substring(0, 12),
-                startTime = DateTime.UtcNow.ToString("o"),
-                deviceId = SystemInfo.deviceUniqueIdentifier,
-                totalItemsCounted = 0
+                sessionId           = Guid.NewGuid().ToString("N").Substring(0, 12),
+                startTime           = DateTime.UtcNow.ToString("o"),
+                deviceId            = SystemInfo.deviceUniqueIdentifier,
+                totalItemsCounted   = 0
             };
 
-            isSessionActive = true;
-            autosaveTimer = 0f;
+            isSessionActive  = true;
+            autosaveTimer    = 0f;
 
             LogEvent("session_start", "New scan session started.");
-            Debug.Log($"[SessionStorage] New session started: {currentSession.sessionId}");
+            Debug.Log($"[SessionStorage] Session started: {currentSession.sessionId}");
         }
 
         public void EndCurrentSession()
@@ -52,7 +59,7 @@ namespace NomadGo.Storage
             if (currentSession == null) return;
 
             currentSession.endTime = DateTime.UtcNow.ToString("o");
-            isSessionActive = false;
+            isSessionActive        = false;
 
             LogEvent("session_end", "Scan session ended.");
             SaveCurrentSession();
@@ -75,24 +82,19 @@ namespace NomadGo.Storage
 
         private void CaptureSnapshot()
         {
-            var countManager = FindObjectOfType<Counting.CountManager>();
-            var frameProcessor = FindObjectOfType<Vision.FrameProcessor>();
-
             if (countManager == null) return;
 
             var snapshot = new SessionSnapshot
             {
-                timestamp = DateTime.UtcNow.ToString("o"),
-                totalCount = countManager.TotalCount,
-                rowCount = countManager.CurrentClusters.Count,
+                timestamp       = DateTime.UtcNow.ToString("o"),
+                totalCount      = countManager.TotalCount,
+                rowCount        = countManager.CurrentClusters.Count,
                 inferenceTimeMs = frameProcessor != null ? frameProcessor.LastInferenceTimeMs : 0f,
-                fps = 1f / Time.deltaTime
+                fps             = Time.deltaTime > 0f ? 1f / Time.deltaTime : 0f
             };
 
             foreach (var kvp in countManager.CurrentCounts)
-            {
                 snapshot.countsByLabel.Add(new LabelCount { label = kvp.Key, count = kvp.Value });
-            }
 
             currentSession.snapshots.Add(snapshot);
             currentSession.totalItemsCounted = countManager.TotalCount;
@@ -111,7 +113,6 @@ namespace NomadGo.Storage
                 Debug.LogWarning("[SessionStorage] No session to export.");
                 return null;
             }
-
             return storageProvider.ExportSession(currentSession);
         }
 
@@ -123,7 +124,7 @@ namespace NomadGo.Storage
             {
                 timestamp = DateTime.UtcNow.ToString("o"),
                 eventType = eventType,
-                details = details
+                details   = details
             });
         }
 
