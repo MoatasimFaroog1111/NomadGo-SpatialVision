@@ -2,48 +2,54 @@ import { describe, it, expect, vi } from "vitest";
 import request from "supertest";
 
 // ── Mock the DB ───────────────────────────────────────────────────────────────
+// NOTE: vi.mock is hoisted — all data must be defined INSIDE the factory,
+// not as top-level variables (they would not yet be initialised when hoisted).
 
-const mockSession = {
-  id: 1,
-  sessionId: "sess-abc123",
-  deviceId: "device-xyz",
-  startTime: new Date().toISOString(),
-  endTime: null,
-  totalItemsCounted: 12,
-  isActive: true,
-  metadata: null,
-};
+vi.mock("../db/index.js", () => {
+  const session = {
+    id: 1,
+    sessionId: "sess-abc123",
+    deviceId: "device-xyz",
+    startTime: new Date().toISOString(),
+    endTime: null,
+    totalItemsCounted: 12,
+    isActive: true,
+    metadata: null,
+  };
 
-const mockPulses = [
-  { id: 1, pulseId: "p-001", sessionId: "sess-abc123", totalCount: 12, rowCount: 3 },
-];
+  const pulses = [
+    { id: 1, pulseId: "p-001", sessionId: "sess-abc123", totalCount: 12, rowCount: 3 },
+  ];
 
-vi.mock("../db/index.js", () => ({
-  db: {
-    select: vi.fn().mockReturnValue({
-      from: vi.fn().mockReturnValue({
-        orderBy: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([mockSession]),
-        }),
-        where: vi.fn().mockReturnValue({
-          limit: vi.fn().mockResolvedValue([mockSession]),
-          orderBy: vi.fn().mockResolvedValue(mockPulses),
-        }),
-      }),
-    }),
-    update: vi.fn().mockReturnValue({
-      set: vi.fn().mockReturnValue({
-        where: vi.fn().mockReturnValue({
-          returning: vi.fn().mockResolvedValue([{ ...mockSession, isActive: false, endTime: new Date() }]),
+  return {
+    db: {
+      select: vi.fn().mockReturnValue({
+        from: vi.fn().mockReturnValue({
+          orderBy: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([session]),
+          }),
+          where: vi.fn().mockReturnValue({
+            limit: vi.fn().mockResolvedValue([session]),
+            orderBy: vi.fn().mockResolvedValue(pulses),
+          }),
         }),
       }),
-    }),
-  },
-  schema: {
-    sessions: { sessionId: "session_id", startTime: "start_time" },
-    pulses:   { sessionId: "session_id", timestamp: "timestamp" },
-  },
-}));
+      update: vi.fn().mockReturnValue({
+        set: vi.fn().mockReturnValue({
+          where: vi.fn().mockReturnValue({
+            returning: vi.fn().mockResolvedValue([
+              { ...session, isActive: false, endTime: new Date() },
+            ]),
+          }),
+        }),
+      }),
+    },
+    schema: {
+      sessions: { sessionId: "session_id", startTime: "start_time" },
+      pulses:   { sessionId: "session_id", timestamp: "timestamp" },
+    },
+  };
+});
 
 import app from "../index.js";
 
