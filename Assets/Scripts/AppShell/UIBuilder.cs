@@ -43,14 +43,16 @@ namespace NomadGo.AppShell
         {
             if (!isScanning) return;
 
-            var fp = FindObjectOfType<Vision.FrameProcessor>();
+            var app = AppManager.Instance;
+            var fp  = app != null ? app.FrameProcessor  : null;
+            var cm  = app != null ? app.CountManager    : null;
+
             if (fp != null)
                 latestDetections = fp.LatestDetections ?? new List<Vision.DetectionResult>();
 
-            var cm = FindObjectOfType<Counting.CountManager>();
             if (cm != null)
             {
-                detectedTotal  = cm.TotalCount;
+                detectedTotal   = cm.TotalCount;
                 detectedByLabel = cm.CurrentCounts ?? new Dictionary<string, int>();
 
                 if (detectedTotal > 0)
@@ -63,7 +65,7 @@ namespace NomadGo.AppShell
                 }
                 else
                 {
-                    SetStatus("Scanning... searching for items");
+                    SetStatus("Scanning... point camera at items");
                 }
             }
         }
