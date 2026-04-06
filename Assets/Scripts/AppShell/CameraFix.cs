@@ -1,32 +1,27 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace NomadGo.AppShell
 {
-    [RequireComponent(typeof(Camera))]
+    /// <summary>
+    /// Displays the device back-camera as a full-screen background using
+    /// a Screen-Space Overlay Canvas (sorting order -100), so all UI renders on top.
+    /// Uses RawImage — no GL shader dependency, correct orientation via RectTransform.
+    /// </summary>
     public class CameraFix : MonoBehaviour
     {
-        private Camera        cam;
         private WebCamTexture webCamTexture;
         private bool          cameraReady = false;
-        private int           rotAngle    = 0;
-        private bool          isMirrored  = false;
-        private string        diagText    = "Initializing camera...";
+        private RawImage      rawImage;
+        private string        diagText    = "Initializing...";
 
         public WebCamTexture CameraTexture => webCamTexture;
         public bool          IsReady       => cameraReady;
 
         private void Awake()
         {
-            cam = GetComponent<Camera>();
-            if (cam != null)
-            {
-                cam.clearFlags      = CameraClearFlags.SolidColor;
-                cam.backgroundColor = Color.black;
-                cam.depth           = 100;
-            }
-
-            // Disable any AR camera components to avoid conflicts
+            // Disable ARCameraBackground so it doesn't fight with our WebCamTexture display
             foreach (var mb in FindObjectsOfType<MonoBehaviour>())
             {
                 if (mb != null && mb.GetType().Name == "ARCameraBackground")
@@ -35,16 +30,35 @@ namespace NomadGo.AppShell
                     Debug.Log($"[CameraFix] Disabled ARCameraBackground on {mb.gameObject.name}");
                 }
             }
-
-            // Keep only this camera active
-            foreach (var c in FindObjectsOfType<Camera>())
-            {
-                if (c == cam) continue;
-                c.enabled = false;
-            }
         }
 
-        private void Start() { StartCoroutine(StartCamera()); }
+        private void Start()
+        {
+            BuildCameraCanvas();
+            StartCoroutine(StartCamera());
+        }
+
+        private void BuildCameraCanvas()
+        {
+            var canvasGo = new GameObject("[CameraBG]");
+            var canvas   = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = -100;   // behind all UI
+            canvasGo.AddComponent<CanvasScaler>();
+
+            var imgGo = new GameObject("feed");
+            imgGo.transform.SetParent(canvasGo.transform, false);
+            rawImage = imgGo.AddComponent<RawImage>();
+
+            // Center-anchored — size set explicitly after camera starts
+            var rt = rawImage.rectTransform;
+            rt.anchorMin        = new Vector2(0.5f, 0.5f);
+            rt.anchorMax        = new Vector2(0.5f, 0.5f);
+            rt.pivot            = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta        = new Vector2(Screen.width, Screen.height);
+            rawImage.color      = Color.black;
+        }
 
         private IEnumerator StartCamera()
         {
@@ -53,17 +67,16 @@ namespace NomadGo.AppShell
 
             if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
             {
-                diagText = "Camera permission denied. Please allow camera access and restart.";
+                diagText = "Camera permission denied.\nAllow camera access and restart.";
                 Debug.LogError("[CameraFix] Camera permission denied.");
                 yield break;
             }
 
-            // Pick back-facing camera
             string camName = "";
-            foreach (var device in WebCamTexture.devices)
+            foreach (var d in WebCamTexture.devices)
             {
-                Debug.Log($"[CameraFix] Found: {device.name} front={device.isFrontFacing}");
-                if (!device.isFrontFacing) { camName = device.name; break; }
+                Debug.Log($"[CameraFix] device: {d.name} front={d.isFrontFacing}");
+                if (!d.isFrontFacing) { camName = d.name; break; }
             }
             if (string.IsNullOrEmpty(camName) && WebCamTexture.devices.Length > 0)
                 camName = WebCamTexture.devices[0].name;
@@ -75,16 +88,14 @@ namespace NomadGo.AppShell
                 yield break;
             }
 
-            diagText = $"Opening camera: {camName}";
+            diagText = "Opening camera...";
             webCamTexture = new WebCamTexture(camName, 1280, 720, 30);
             webCamTexture.Play();
 
-            // Wait for camera to produce valid frames
             float timeout = 30f;
             while (webCamTexture.width <= 16)
             {
                 timeout -= Time.deltaTime;
-                diagText = $"Waiting for camera... ({timeout:F0}s)";
                 if (timeout <= 0)
                 {
                     diagText = "Camera timed out. Check permissions.";
@@ -93,73 +104,55 @@ namespace NomadGo.AppShell
                 }
                 yield return null;
             }
+            yield return new WaitForSeconds(0.5f);
 
-            // Brief stabilisation delay
-            yield return new WaitForSeconds(1.5f);
+            int  rotAngle = webCamTexture.videoRotationAngle;
+            bool mirrored = webCamTexture.videoVerticallyMirrored;
 
-            rotAngle   = webCamTexture.videoRotationAngle;
-            isMirrored = webCamTexture.videoVerticallyMirrored;
+            int scrW = Screen.width;
+            int scrH = Screen.height;
+            int camW = webCamTexture.width;
+            int camH = webCamTexture.height;
+
+            // Compute scale so the (possibly rotated) camera fills the screen (ScaleAndCrop).
+            // After a 90/270° rotation the camera's width maps to screen height and vice-versa.
+            float scale;
+            if (rotAngle == 90 || rotAngle == 270)
+                scale = Mathf.Max((float)scrW / camH, (float)scrH / camW);
+            else
+                scale = Mathf.Max((float)scrW / camW, (float)scrH / camH);
+
+            rawImage.texture = webCamTexture;
+            rawImage.color   = Color.white;
+
+            var rt = rawImage.rectTransform;
+            // sizeDelta in local (pre-rotation) space; after rotation it fills the screen
+            rt.sizeDelta        = new Vector2(camW * scale, camH * scale);
+            // Rotate to correct orientation  (Unity +z = CCW, so -rotAngle = clockwise correction)
+            rt.localEulerAngles = new Vector3(0f, 0f, -rotAngle);
+            // Mirror only if needed (front cameras)
+            rt.localScale       = new Vector3(mirrored ? -1f : 1f, 1f, 1f);
 
             cameraReady = true;
             diagText    = "";
-            Debug.Log($"[CameraFix] Ready. rot={rotAngle} mirrored={isMirrored} " +
-                      $"size={webCamTexture.width}x{webCamTexture.height}");
+            Debug.Log($"[CameraFix] Ready rot={rotAngle} mirror={mirrored} " +
+                      $"cam={camW}x{camH} scale={scale:F3} " +
+                      $"rect={camW * scale:F0}x{camH * scale:F0}");
         }
 
-        // ── Camera rendering via GUI.DrawTexture — no shader dependency ──────
-
+        // Show a status message only while the camera is starting up
         private void OnGUI()
         {
-            // Show status message while camera is not ready
-            if (!cameraReady || webCamTexture == null)
-            {
-                if (!string.IsNullOrEmpty(diagText))
-                {
-                    var style = new GUIStyle(GUI.skin.box);
-                    style.fontSize  = Mathf.Max(20, Screen.height / 30);
-                    style.fontStyle = FontStyle.Bold;
-                    style.normal.textColor = Color.yellow;
-                    style.alignment = TextAnchor.MiddleCenter;
-                    style.wordWrap  = true;
-                    GUI.Box(new Rect(20, Screen.height / 2 - 60,
-                                    Screen.width - 40, 120), diagText, style);
-                }
-                return;
-            }
+            if (cameraReady || string.IsNullOrEmpty(diagText)) return;
 
-            float W = Screen.width;
-            float H = Screen.height;
-
-            // Rotate around screen center to match device orientation
-            Matrix4x4 savedMatrix = GUI.matrix;
-            Vector2    pivot       = new Vector2(W / 2f, H / 2f);
-            GUIUtility.RotateAroundPivot(-rotAngle, pivot);
-
-            // When rotated 90/270 the camera's aspect fills the screen differently
-            Rect drawRect;
-            if (rotAngle == 90 || rotAngle == 270)
-            {
-                // Camera is landscape-sized; we need to fit it into portrait screen
-                float camAspect = (float)webCamTexture.width / webCamTexture.height;
-                float drawW     = H * camAspect;
-                drawRect = new Rect((W - drawW) / 2f, 0, drawW, H);
-            }
-            else
-            {
-                drawRect = new Rect(0, 0, W, H);
-            }
-
-            // Flip horizontal if mirrored (front camera)
-            if (isMirrored)
-            {
-                // Mirror by scaling around pivot
-                GUIUtility.ScaleAroundPivot(new Vector2(-1, 1), pivot);
-            }
-
-            GUI.DrawTexture(drawRect, webCamTexture,
-                            ScaleMode.ScaleToFit, false);
-
-            GUI.matrix = savedMatrix;
+            var s = new GUIStyle(GUI.skin.label);
+            s.fontSize         = Mathf.Max(22, Screen.height / 28);
+            s.fontStyle        = FontStyle.Bold;
+            s.normal.textColor = Color.yellow;
+            s.alignment        = TextAnchor.MiddleCenter;
+            s.wordWrap         = true;
+            GUI.Label(new Rect(20, Screen.height * 0.4f, Screen.width - 40, Screen.height * 0.2f),
+                      diagText, s);
         }
 
         private void OnDestroy()
