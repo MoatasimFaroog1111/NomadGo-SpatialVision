@@ -74,12 +74,12 @@ namespace NomadGo.AppShell
         {
             if (stylesInit) return;
 
-            float scale = Screen.dpi > 0 ? Screen.dpi / 160f : 1f;
-            scale = Mathf.Clamp(scale, 1f, 3f);
-
-            btnHeight    = 120f * scale;
-            btnMargin    = 20f  * scale;
-            statusHeight = 80f  * scale;
+            // Size everything relative to screen height so it looks correct on any density.
+            // DPI-based scaling over-sizes on high-PPI phones (e.g. 401-DPI Moto G84 → 2.5×).
+            float H = Screen.height;
+            btnHeight    = H * 0.075f;   // 7.5 % of screen
+            btnMargin    = H * 0.012f;
+            statusHeight = H * 0.055f;
 
             Texture2D MakeTex(Color c)
             {
@@ -90,7 +90,7 @@ namespace NomadGo.AppShell
             }
 
             btnStyle = new GUIStyle();
-            btnStyle.fontSize = Mathf.RoundToInt(36 * scale);
+            btnStyle.fontSize = Mathf.RoundToInt(H * 0.022f);
             btnStyle.fontStyle = FontStyle.Bold;
             btnStyle.normal.textColor = Color.white;
             btnStyle.alignment = TextAnchor.MiddleCenter;
@@ -99,7 +99,7 @@ namespace NomadGo.AppShell
             btnStyle.hover.background  = MakeTex(new Color(0.12f, 0.75f, 0.12f, 0.92f));
 
             statusStyle = new GUIStyle();
-            statusStyle.fontSize = Mathf.RoundToInt(24 * scale);
+            statusStyle.fontSize = Mathf.RoundToInt(H * 0.016f);
             statusStyle.normal.textColor = Color.white;
             statusStyle.alignment = TextAnchor.MiddleCenter;
             statusStyle.wordWrap = true;
@@ -110,13 +110,13 @@ namespace NomadGo.AppShell
             panelStyle.padding = new RectOffset(16, 16, 16, 16);
 
             textStyle = new GUIStyle();
-            textStyle.fontSize = Mathf.RoundToInt(22 * scale);
+            textStyle.fontSize = Mathf.RoundToInt(H * 0.014f);
             textStyle.normal.textColor = Color.white;
             textStyle.alignment = TextAnchor.UpperLeft;
             textStyle.wordWrap = true;
 
             titleStyle = new GUIStyle();
-            titleStyle.fontSize = Mathf.RoundToInt(30 * scale);
+            titleStyle.fontSize = Mathf.RoundToInt(H * 0.019f);
             titleStyle.fontStyle = FontStyle.Bold;
             titleStyle.normal.textColor = Color.cyan;
             titleStyle.alignment = TextAnchor.MiddleCenter;
@@ -136,16 +136,13 @@ namespace NomadGo.AppShell
             labelBgTex.SetPixel(0, 0, new Color(0f, 0.6f, 0.1f, 0.85f));
             labelBgTex.Apply();
 
-            float scale = Screen.dpi > 0 ? Screen.dpi / 160f : 1f;
-            scale = Mathf.Clamp(scale, 1f, 3f);
-
             boxStyle = new GUIStyle();
             boxStyle.normal.background = boxTex;
 
             boxLabelStyle = new GUIStyle();
             boxLabelStyle.normal.background  = labelBgTex;
             boxLabelStyle.normal.textColor   = Color.white;
-            boxLabelStyle.fontSize = Mathf.RoundToInt(18 * scale);
+            boxLabelStyle.fontSize = Mathf.RoundToInt(Screen.height * 0.013f);
             boxLabelStyle.alignment = TextAnchor.MiddleLeft;
             boxLabelStyle.padding  = new RectOffset(4, 4, 2, 2);
             boxLabelStyle.wordWrap = false;

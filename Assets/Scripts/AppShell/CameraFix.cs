@@ -21,14 +21,28 @@ namespace NomadGo.AppShell
 
         private void Awake()
         {
-            // Disable ARCameraBackground so it doesn't fight with our WebCamTexture display
+            // Disable all AR Foundation components — we use WebCamTexture, not ARCore.
+            // ARCameraBackground / ARCameraManager left enabled cause magenta on AR-init failure.
+            string[] arTypes = { "ARCameraBackground", "ARCameraManager",
+                                  "ARSession", "ARSessionOrigin",
+                                  "ARInputManager", "ARPlaneManager",
+                                  "ARPointCloudManager", "ARRaycastManager" };
+            var arTypeSet = new System.Collections.Generic.HashSet<string>(arTypes);
             foreach (var mb in FindObjectsOfType<MonoBehaviour>())
             {
-                if (mb != null && mb.GetType().Name == "ARCameraBackground")
+                if (mb != null && arTypeSet.Contains(mb.GetType().Name))
                 {
                     mb.enabled = false;
-                    Debug.Log($"[CameraFix] Disabled ARCameraBackground on {mb.gameObject.name}");
+                    Debug.Log($"[CameraFix] Disabled {mb.GetType().Name}");
                 }
+            }
+
+            // Set every Camera to clear with solid black so AR failures can't bleed through
+            foreach (var cam in FindObjectsOfType<Camera>())
+            {
+                cam.clearFlags      = CameraClearFlags.SolidColor;
+                cam.backgroundColor = Color.black;
+                cam.depth           = 0;
             }
         }
 
