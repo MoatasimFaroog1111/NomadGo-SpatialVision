@@ -78,7 +78,8 @@ jobs:
           androidKeyaliasName:   ${{ secrets.ANDROID_KEYALIAS_NAME }}
           androidKeyaliasPass:   ${{ secrets.ANDROID_KEYALIAS_PASS }}
           # Enable Barracuda (ONNX) for real AI inference
-          customParameters: -define UNITY_BARRACUDA
+          # UNITY_BARRACUDA is also set in ProjectSettings.asset for reliability
+          customParameters: -customDefines UNITY_BARRACUDA
           buildName: NomadGo-SpatialVision
           versioning: Semantic
           allowDirtyBuild: true
@@ -115,6 +116,8 @@ jobs:
                       print(f'  Patched glEsVersion at offset {i}')
 
           print(f'Total patches: {patched}')
+          if patched == 0:
+              print('INFO: glEsVersion already 2.0 in binary manifest (or not found) — no patch needed.')
 
           with zipfile.ZipFile(apk, 'r') as zin:
               with zipfile.ZipFile('/tmp/patched.apk', 'w') as zout:

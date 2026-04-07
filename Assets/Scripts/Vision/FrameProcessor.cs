@@ -91,7 +91,7 @@ namespace NomadGo.Vision
             if (tex == null) return;
 
             ProcessFrame(tex);
-            Destroy(tex);
+            DestroyImmediate(tex); // immediate: avoids deferred-GC buildup at 30fps
         }
 
         private Texture2D ConvertWebCamToTexture(WebCamTexture webCam)

@@ -26,6 +26,7 @@ namespace NomadGo.Counting
     {
         private float iouThreshold = 0.4f;
         private int maxAge = 15;
+        private const int maxTrackedObjects = 200; // hard cap — prevents OOM on long scans
         private int nextTrackingId = 1;
         private List<TrackedObject> trackedObjects = new List<TrackedObject>();
 
@@ -97,8 +98,11 @@ namespace NomadGo.Counting
                     int newId = nextTrackingId++;
                     detections[d].trackingId = newId;
 
-                    var newTrack = new TrackedObject(newId, detections[d]);
-                    trackedObjects.Add(newTrack);
+                    if (trackedObjects.Count < maxTrackedObjects) // enforce hard cap
+                    {
+                        var newTrack = new TrackedObject(newId, detections[d]);
+                        trackedObjects.Add(newTrack);
+                    }
                 }
             }
 

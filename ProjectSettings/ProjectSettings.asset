@@ -278,7 +278,7 @@ PlayerSettings:
   m_NeedSecureTeam: 0
   m_Datestamp: 0000000000000000
   scriptingDefineSymbols:
-    Android: UNITY_AR;NOMADGO_SPATIAL
+    Android: UNITY_AR;NOMADGO_SPATIAL;UNITY_BARRACUDA
     Standalone: UNITY_STANDALONE
   additionalCompilerArguments: {}
   platformArchitecture: {}

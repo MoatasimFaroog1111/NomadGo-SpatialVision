@@ -197,7 +197,7 @@ namespace NomadGo.Vision
             RenderTexture.ReleaseTemporary(rt);
 
             Color32[] px = tex.GetPixels32();
-            Destroy(tex);
+            DestroyImmediate(tex); // immediate: avoids deferred-GC buildup during inference
 
             int hw     = inputWidth * inputHeight;
             float[] d  = new float[hw * 3]; // NHWC: each pixel has 3 channels

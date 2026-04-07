@@ -9,7 +9,7 @@ namespace NomadGo.Diagnostics
         private GUIStyle fpsStyle;
         private bool styleInitialized = false;
 
-        public float CurrentFPS => 1f / deltaTime;
+        public float CurrentFPS => deltaTime > 0f ? 1f / deltaTime : 0f;
         public bool ShowOverlay { get => showOverlay; set => showOverlay = value; }
 
         private void Update()
