@@ -1,82 +1,112 @@
 using System.Collections;
 using UnityEngine;
+using UnityEngine.UI;
 
 namespace NomadGo.AppShell
 {
-    [RequireComponent(typeof(Camera))]
+    /// <summary>
+    /// Displays the device back-camera as a full-screen background using
+    /// a Screen-Space Overlay Canvas (sorting order -100), so all UI renders on top.
+    /// Uses RawImage — no GL shader dependency, correct orientation via RectTransform.
+    /// Canvas is created in Awake so black background exists from frame 0 (no magenta flash).
+    /// </summary>
     public class CameraFix : MonoBehaviour
     {
-        private Camera        cam;
         private WebCamTexture webCamTexture;
-        private RenderTexture blitRT;
-        private Material      drawMat;
         private bool          cameraReady = false;
-        private int           rotAngle    = 0;
-        private bool          isMirrored  = false;
-        private bool          invertV     = false;
-        private string        diagText    = "CameraFix v11: starting...";
+        private RawImage      rawImage;
+        private string        diagText    = "Initializing...";
 
         public WebCamTexture CameraTexture => webCamTexture;
         public bool          IsReady       => cameraReady;
 
         private void Awake()
         {
-            cam = GetComponent<Camera>();
-            if (cam != null)
-            {
-                cam.clearFlags      = CameraClearFlags.SolidColor;
-                cam.backgroundColor = Color.black;
-                cam.allowHDR        = false;
-                cam.allowMSAA       = false;
-                cam.depth           = 100;
-            }
-
+            // Disable all AR Foundation components — we use WebCamTexture, not ARCore.
+            // ARCameraBackground / ARCameraManager left enabled cause magenta on AR-init failure.
+            string[] arTypes = { "ARCameraBackground", "ARCameraManager",
+                                  "ARSession", "ARSessionOrigin",
+                                  "ARInputManager", "ARPlaneManager",
+                                  "ARPointCloudManager", "ARRaycastManager" };
+            var arTypeSet = new System.Collections.Generic.HashSet<string>(arTypes);
             foreach (var mb in FindObjectsOfType<MonoBehaviour>())
             {
-                if (mb != null && mb.GetType().Name == "ARCameraBackground")
+                if (mb != null && arTypeSet.Contains(mb.GetType().Name))
                 {
                     mb.enabled = false;
-                    Debug.Log($"[CameraFix] Disabled ARCameraBackground on {mb.gameObject.name}");
+                    Debug.Log($"[CameraFix] Disabled {mb.GetType().Name}");
                 }
             }
 
-            foreach (var c in FindObjectsOfType<Camera>())
+            // Set every Camera to clear with solid black so AR failures cannot bleed through
+            foreach (var cam in FindObjectsOfType<Camera>())
             {
-                if (c == cam) continue;
-                c.enabled = false;
-                Debug.Log($"[CameraFix] Disabled camera: {c.gameObject.name}");
+                cam.clearFlags      = CameraClearFlags.SolidColor;
+                cam.backgroundColor = Color.black;
+                cam.depth           = 0;
             }
+
+            // Build canvas in Awake so a black background exists from frame 0,
+            // eliminating any magenta flash before Start() runs.
+            BuildCameraCanvas();
         }
 
-        private void Start() { StartCoroutine(StartCamera()); }
+        private void Start()
+        {
+            StartCoroutine(StartCamera());
+        }
+
+        private void BuildCameraCanvas()
+        {
+            var canvasGo = new GameObject("[CameraBG]");
+            var canvas   = canvasGo.AddComponent<Canvas>();
+            canvas.renderMode   = RenderMode.ScreenSpaceOverlay;
+            canvas.sortingOrder = -100;
+            canvasGo.AddComponent<CanvasScaler>();
+
+            var imgGo = new GameObject("feed");
+            imgGo.transform.SetParent(canvasGo.transform, false);
+            rawImage = imgGo.AddComponent<RawImage>();
+
+            var rt = rawImage.rectTransform;
+            rt.anchorMin        = new Vector2(0.5f, 0.5f);
+            rt.anchorMax        = new Vector2(0.5f, 0.5f);
+            rt.pivot            = new Vector2(0.5f, 0.5f);
+            rt.anchoredPosition = Vector2.zero;
+            rt.sizeDelta        = new Vector2(Screen.width, Screen.height);
+            rawImage.color      = Color.black;
+        }
 
         private IEnumerator StartCamera()
         {
+            diagText = "Requesting camera permission...";
             yield return Application.RequestUserAuthorization(UserAuthorization.WebCam);
+
             if (!Application.HasUserAuthorization(UserAuthorization.WebCam))
             {
-                diagText = "v11: CAMERA PERMISSION DENIED";
-                Debug.LogError("[CameraFix] Camera permission denied!");
+                diagText = "Camera permission denied.
+Allow camera access and restart.";
+                Debug.LogError("[CameraFix] Camera permission denied.");
                 yield break;
             }
 
             string camName = "";
-            foreach (var device in WebCamTexture.devices)
+            foreach (var d in WebCamTexture.devices)
             {
-                Debug.Log($"[CameraFix] Device: {device.name} front={device.isFrontFacing}");
-                if (!device.isFrontFacing) { camName = device.name; break; }
+                Debug.Log($"[CameraFix] device: {d.name} front={d.isFrontFacing}");
+                if (!d.isFrontFacing) { camName = d.name; break; }
             }
             if (string.IsNullOrEmpty(camName) && WebCamTexture.devices.Length > 0)
                 camName = WebCamTexture.devices[0].name;
+
             if (string.IsNullOrEmpty(camName))
             {
-                diagText = "v11: NO CAMERA FOUND";
-                Debug.LogError("[CameraFix] No camera device found!");
+                diagText = "No camera found on device.";
+                Debug.LogError("[CameraFix] No camera device found.");
                 yield break;
             }
 
-            diagText = $"v11: opening {camName}";
-            Debug.Log($"[CameraFix] Opening: {camName}");
+            diagText = "Opening camera...";
             webCamTexture = new WebCamTexture(camName, 1280, 720, 30);
             webCamTexture.Play();
 
@@ -84,146 +114,65 @@ namespace NomadGo.AppShell
             while (webCamTexture.width <= 16)
             {
                 timeout -= Time.deltaTime;
-                diagText = $"v11: waiting cam w={webCamTexture.width} t={timeout:F0}s";
                 if (timeout <= 0)
                 {
-                    diagText = "v11: CAM TIMEOUT";
-                    Debug.LogError("[CameraFix] Camera timeout!");
+                    diagText = "Camera timed out. Check permissions.";
+                    Debug.LogError("[CameraFix] Camera startup timed out.");
                     yield break;
                 }
                 yield return null;
             }
+            yield return new WaitForSeconds(1.0f);
 
-            yield return new WaitForSeconds(2f);
+            int  rotAngle = webCamTexture.videoRotationAngle;
+            bool mirrored = webCamTexture.videoVerticallyMirrored;
 
-            rotAngle   = webCamTexture.videoRotationAngle;
-            isMirrored = webCamTexture.videoVerticallyMirrored;
-            invertV    = SystemInfo.graphicsUVStartsAtTop;
+            int scrW = Screen.width;
+            int scrH = Screen.height;
+            int camW = webCamTexture.width;
+            int camH = webCamTexture.height;
 
-            diagText = $"v11 READY rot={rotAngle} mir={isMirrored} inv={invertV} api={SystemInfo.graphicsDeviceType}";
-            Debug.Log($"[CameraFix] {diagText}");
+            Debug.Log($"[CameraFix] Camera actual res={camW}x{camH} rot={rotAngle} mirror={mirrored} screen={scrW}x{scrH}");
 
-            blitRT = new RenderTexture(webCamTexture.width, webCamTexture.height, 0, RenderTextureFormat.ARGB32);
-            blitRT.Create();
+            float scale;
+            if (rotAngle == 90 || rotAngle == 270)
+                scale = Mathf.Max((float)scrW / camH, (float)scrH / camW);
+            else
+                scale = Mathf.Max((float)scrW / camW, (float)scrH / camH);
 
-            var shader = Shader.Find("Unlit/Texture");
-            if (shader == null || !shader.isSupported) shader = Shader.Find("Sprites/Default");
-            drawMat = new Material(shader);
+            rawImage.texture = webCamTexture;
+            rawImage.color   = Color.white;
+
+            var rt = rawImage.rectTransform;
+            rt.sizeDelta        = new Vector2(camW * scale, camH * scale);
+            rt.localEulerAngles = new Vector3(0f, 0f, -rotAngle);
+            rt.localScale       = new Vector3(mirrored ? -1f : 1f, 1f, 1f);
 
             cameraReady = true;
+            diagText    = "";
+            Debug.Log($"[CameraFix] Ready rot={rotAngle} mirror={mirrored} " +
+                      $"cam={camW}x{camH} scale={scale:F3} " +
+                      $"rect={camW * scale:F0}x{camH * scale:F0}");
         }
 
         private void OnGUI()
         {
-            var style = new GUIStyle(GUI.skin.label);
-            style.fontSize  = 20;
-            style.fontStyle = FontStyle.Bold;
-            style.normal.textColor = Color.yellow;
-            int w = Screen.width;
-            int h = Screen.height;
-            GUI.Label(new Rect(10, h / 2 - 20, w - 20, 40), diagText, style);
-        }
+            if (cameraReady || string.IsNullOrEmpty(diagText)) return;
 
-        private void Update()
-        {
-            if (!cameraReady || webCamTexture == null || !webCamTexture.isPlaying) return;
-            if (!webCamTexture.didUpdateThisFrame) return;
-            Graphics.Blit(webCamTexture, blitRT);
-        }
-
-        private void OnPostRender()
-        {
-            if (!cameraReady || blitRT == null || drawMat == null) return;
-
-            drawMat.mainTexture = blitRT;
-            GL.PushMatrix();
-            GL.LoadOrtho();
-            drawMat.SetPass(0);
-            GL.Begin(GL.QUADS);
-
-            float v0 = invertV ? 1f : 0f;
-            float v1 = invertV ? 0f : 1f;
-
-            if (rotAngle == 0 || rotAngle == 360)
-            {
-                if (isMirrored)
-                {
-                    GL.TexCoord2(1, v1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(0, v1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(0, v0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(1, v0); GL.Vertex3(0, 1, 0);
-                }
-                else
-                {
-                    GL.TexCoord2(0, v1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, v1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, v0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, v0); GL.Vertex3(0, 1, 0);
-                }
-            }
-            // the device reports 90°, which corrects the inversion.
-            else if (rotAngle == 90)
-            {
-                if (isMirrored)
-                {
-                    GL.TexCoord2(1, v1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, v0); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(0, v0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, v1); GL.Vertex3(0, 1, 0);
-                }
-                else
-                {
-                    GL.TexCoord2(0, v1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(0, v0); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, v0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(1, v1); GL.Vertex3(0, 1, 0);
-                }
-            }
-            else if (rotAngle == 270)
-            {
-                if (isMirrored)
-                {
-                    GL.TexCoord2(0, v0); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(0, v1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, v1); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(1, v0); GL.Vertex3(0, 1, 0);
-                }
-                else
-                {
-                    GL.TexCoord2(1, v0); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, v1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(0, v1); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, v0); GL.Vertex3(0, 1, 0);
-                }
-            }
-            else // 180
-            {
-                if (isMirrored)
-                {
-                    GL.TexCoord2(0, v1); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(1, v1); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(1, v0); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(0, v0); GL.Vertex3(0, 1, 0);
-                }
-                else
-                {
-                    GL.TexCoord2(1, v0); GL.Vertex3(0, 0, 0);
-                    GL.TexCoord2(0, v0); GL.Vertex3(1, 0, 0);
-                    GL.TexCoord2(0, v1); GL.Vertex3(1, 1, 0);
-                    GL.TexCoord2(1, v1); GL.Vertex3(0, 1, 0);
-                }
-            }
-
-            GL.End();
-            GL.PopMatrix();
+            var s = new GUIStyle(GUI.skin.label);
+            s.fontSize         = Mathf.Max(22, Screen.height / 28);
+            s.fontStyle        = FontStyle.Bold;
+            s.normal.textColor = Color.yellow;
+            s.alignment        = TextAnchor.MiddleCenter;
+            s.wordWrap         = true;
+            GUI.Label(new Rect(20, Screen.height * 0.4f, Screen.width - 40, Screen.height * 0.2f),
+                      diagText, s);
         }
 
         private void OnDestroy()
         {
             cameraReady = false;
             if (webCamTexture != null) { webCamTexture.Stop(); webCamTexture = null; }
-            if (blitRT != null) { blitRT.Release(); Destroy(blitRT); blitRT = null; }
-            if (drawMat != null) { Destroy(drawMat); drawMat = null; }
         }
     }
 }

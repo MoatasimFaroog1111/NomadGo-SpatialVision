@@ -131,13 +131,36 @@ namespace NomadGo.Vision
 #endif
             try
             {
-                barracudaModel  = ModelLoader.Load(bytes, verbose: false);
+                barracudaModel = ModelLoader.Load(bytes, verbose: false);
 
-                barracudaWorker = WorkerFactory.CreateWorker(
-                    WorkerFactory.Type.CSharpBurst, barracudaModel);
+                // Try CSharpBurst first (fastest on ARM64); fall back to CSharp if IL2CPP
+                // strips Burst jobs, then to CSharpRef as last resort before demo mode.
+                IWorker worker = null;
+                try
+                {
+                    worker = WorkerFactory.CreateWorker(WorkerFactory.Type.CSharpBurst, barracudaModel);
+                    Debug.Log("[ONNXEngine] Worker: CSharpBurst");
+                }
+                catch (Exception exBurst)
+                {
+                    Debug.LogWarning($"[ONNXEngine] CSharpBurst failed ({exBurst.Message}), trying CSharp...");
+                    try
+                    {
+                        worker = WorkerFactory.CreateWorker(WorkerFactory.Type.CSharp, barracudaModel);
+                        Debug.Log("[ONNXEngine] Worker: CSharp");
+                    }
+                    catch (Exception exCs)
+                    {
+                        Debug.LogWarning($"[ONNXEngine] CSharp failed ({exCs.Message}), trying CSharpRef...");
+                        worker = WorkerFactory.CreateWorker(WorkerFactory.Type.CSharpRef, barracudaModel);
+                        Debug.Log("[ONNXEngine] Worker: CSharpRef");
+                    }
+                }
 
-                barracudaReady = true;
-                isLoaded       = true;
+                barracudaWorker = worker;
+                barracudaReady  = true;
+                isLoaded        = true;
+                isLoading       = false;
                 Debug.Log($"[ONNXEngine] Barracuda model ready ({bytes.Length/1024/1024f:F1} MB). Real AI active.");
             }
             catch (Exception ex)
