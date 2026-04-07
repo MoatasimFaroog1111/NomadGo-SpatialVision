@@ -41,11 +41,21 @@ namespace NomadGo.AppShell
 
         private void Update()
         {
-            if (!isScanning) return;
-
             var app = AppManager.Instance;
-            var fp  = app != null ? app.FrameProcessor  : null;
-            var cm  = app != null ? app.CountManager    : null;
+            var fp  = app != null ? app.FrameProcessor : null;
+            var cm  = app != null ? app.CountManager   : null;
+
+            // Show model loading state when NOT scanning yet
+            if (!isScanning)
+            {
+                if (fp != null && fp.IsEngineLoading)
+                    SetStatus("Loading AI model... please wait");
+                else if (fp != null && fp.IsEngineReady && fp.IsInDemoMode)
+                    SetStatus("AI DEMO MODE — model failed to load");
+                else if (fp != null && fp.IsEngineReady)
+                    SetStatus("NomadGo Ready — Press Start Scan");
+                return;
+            }
 
             if (fp != null)
                 latestDetections = fp.LatestDetections ?? new List<Vision.DetectionResult>();
@@ -181,8 +191,21 @@ namespace NomadGo.AppShell
                 "Reports",  new Color(0.47f, 0.16f, 0.63f, 0.92f), OnToggleReports);
 
             if (!isScanning)
-                DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
-                    "\u25B6  Start Scan", new Color(0.08f, 0.63f, 0.08f, 0.92f), OnStartScan);
+            {
+                var fp = AppManager.Instance != null ? AppManager.Instance.FrameProcessor : null;
+                bool engineReady = fp != null && fp.IsEngineReady;
+                bool loading     = fp != null && fp.IsEngineLoading;
+
+                if (loading)
+                    DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
+                        "Loading AI model...", new Color(0.35f, 0.35f, 0.35f, 0.85f), null);
+                else if (!engineReady)
+                    DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
+                        "Initializing...", new Color(0.35f, 0.35f, 0.35f, 0.85f), null);
+                else
+                    DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
+                        "\u25B6  Start Scan", new Color(0.08f, 0.63f, 0.08f, 0.92f), OnStartScan);
+            }
             else
                 DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
                     "\u25A0  Stop Scan", new Color(0.78f, 0.12f, 0.12f, 0.92f), OnStopScan);

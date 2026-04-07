@@ -103,6 +103,7 @@ namespace NomadGo.AppShell
             }
 
             diagText = "Opening camera...";
+            // Request 1280×720 but Android may give a different resolution — we read back actual
             webCamTexture = new WebCamTexture(camName, 1280, 720, 30);
             webCamTexture.Play();
 
@@ -118,15 +119,19 @@ namespace NomadGo.AppShell
                 }
                 yield return null;
             }
-            yield return new WaitForSeconds(0.5f);
+            // Extra wait: let videoRotationAngle stabilise (some devices update it late)
+            yield return new WaitForSeconds(1.0f);
 
             int  rotAngle = webCamTexture.videoRotationAngle;
             bool mirrored = webCamTexture.videoVerticallyMirrored;
 
+            // Read ACTUAL resolution Android gave us (may differ from requested 1280×720)
             int scrW = Screen.width;
             int scrH = Screen.height;
             int camW = webCamTexture.width;
             int camH = webCamTexture.height;
+
+            Debug.Log($"[CameraFix] Camera actual res={camW}x{camH} rot={rotAngle} mirror={mirrored} screen={scrW}x{scrH}");
 
             // Compute scale so the (possibly rotated) camera fills the screen (ScaleAndCrop).
             // After a 90/270° rotation the camera's width maps to screen height and vice-versa.

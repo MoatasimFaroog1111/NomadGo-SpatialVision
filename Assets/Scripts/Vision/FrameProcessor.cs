@@ -14,7 +14,10 @@ namespace NomadGo.Vision
         private int frameCounter = 0;
         private List<DetectionResult> latestDetections = new List<DetectionResult>();
 
-        public bool IsProcessing => isProcessing;
+        public bool IsProcessing   => isProcessing;
+        public bool IsEngineReady  => inferenceEngine != null && inferenceEngine.IsLoaded;
+        public bool IsEngineLoading => inferenceEngine != null && inferenceEngine.IsLoading;
+        public bool IsInDemoMode   => inferenceEngine != null && inferenceEngine.IsInDemoMode;
         public List<DetectionResult> LatestDetections => latestDetections;
         public float LastInferenceTimeMs => inferenceEngine != null ? inferenceEngine.LastInferenceTimeMs : 0f;
         public int InputWidth { get; private set; } = 640;

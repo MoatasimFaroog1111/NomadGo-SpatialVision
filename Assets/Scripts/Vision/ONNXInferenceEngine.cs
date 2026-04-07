@@ -24,6 +24,7 @@ namespace NomadGo.Vision
 
         private bool  isLoaded        = false;
         private bool  useDemoMode     = false;
+        private bool  isLoading       = false;
         private float lastInferenceMs = 0f;
 
 #if UNITY_BARRACUDA
@@ -33,6 +34,8 @@ namespace NomadGo.Vision
 #endif
 
         public bool  IsLoaded            => isLoaded;
+        public bool  IsLoading           => isLoading;
+        public bool  IsInDemoMode        => useDemoMode;
         public float LastInferenceTimeMs => lastInferenceMs;
 
         public void Initialize(AppShell.ModelConfig config)
@@ -103,6 +106,7 @@ namespace NomadGo.Vision
 
         private IEnumerator LoadModelAsync()
         {
+            isLoading = true;
 #if UNITY_BARRACUDA
             string onnxPath = Path.Combine(Application.streamingAssetsPath, modelPath);
             Debug.Log($"[ONNXEngine] Loading: {onnxPath}");
@@ -138,15 +142,18 @@ namespace NomadGo.Vision
 
                 barracudaReady = true;
                 isLoaded       = true;
+                isLoading      = false;
                 Debug.Log($"[ONNXEngine] Barracuda model ready ({bytes.Length/1024/1024f:F1} MB). Real AI active.");
             }
             catch (Exception ex)
             {
                 Debug.LogError($"[ONNXEngine] Barracuda init failed: {ex.Message} → DEMO mode.");
+                isLoading = false;
                 ActivateDemoMode();
             }
 #else
             Debug.LogWarning("[ONNXEngine] UNITY_BARRACUDA not defined → DEMO mode.");
+            isLoading = false;
             ActivateDemoMode();
             yield return null;
 #endif
