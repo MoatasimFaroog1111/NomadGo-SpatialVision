@@ -51,8 +51,6 @@ jobs:
           targetPlatform: Android
           androidExportType: androidPackage
           androidTargetSdkVersion: AndroidApiLevel34
-          androidMinSdkVersion: AndroidApiLevel24
-          androidArchitecture: ARM64
           androidKeystoreBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           androidKeystorePass:   ${{ secrets.ANDROID_KEYSTORE_PASS }}
           androidKeyaliasName:   ${{ secrets.ANDROID_KEYALIAS_NAME }}
