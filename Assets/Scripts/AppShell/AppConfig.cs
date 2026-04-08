@@ -32,6 +32,10 @@ namespace NomadGo.AppShell
         public float confidence_threshold;
         public float nms_threshold;
         public int max_detections;
+        /// <summary>URL to a remote manifest JSON. Empty = use bundled model.</summary>
+        public string remote_url;
+        /// <summary>Version string of the currently bundled / cached model.</summary>
+        public string model_version;
     }
 
     [Serializable]

@@ -11,7 +11,9 @@
     "input_height": 640,
     "confidence_threshold": 0.45,
     "nms_threshold": 0.5,
-    "max_detections": 100
+    "max_detections": 100,
+    "remote_url": "",
+    "model_version": "1.0.0"
   },
   "counting": {
     "row_cluster_vertical_gap": 50,

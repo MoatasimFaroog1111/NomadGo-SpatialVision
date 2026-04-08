@@ -20,6 +20,7 @@ namespace NomadGo.AppShell
         [SerializeField] private Sync.SyncPulseManager syncPulseManager;
         [SerializeField] private Vision.FrameProcessor frameProcessor;
         [SerializeField] private Counting.CountManager countManager;
+        [SerializeField] private Vision.ModelDownloader modelDownloader;
 
         private AppConfig appConfig;
         private bool isInitialized = false;
@@ -33,6 +34,7 @@ namespace NomadGo.AppShell
         public Sync.SyncPulseManager SyncPulse           => syncPulseManager;
         public Vision.FrameProcessor FrameProcessor      => frameProcessor;
         public Counting.CountManager CountManager        => countManager;
+        public Vision.ModelDownloader ModelDownloader    => modelDownloader;
 
         private void Awake()
         {
@@ -152,6 +154,12 @@ namespace NomadGo.AppShell
                 frameProcessor = FindObjectOfType<Vision.FrameProcessor>();
             if (countManager == null)
                 countManager = FindObjectOfType<Counting.CountManager>();
+
+            // ModelDownloader: find or create on this GameObject
+            if (modelDownloader == null)
+                modelDownloader = FindObjectOfType<Vision.ModelDownloader>();
+            if (modelDownloader == null)
+                modelDownloader = gameObject.AddComponent<Vision.ModelDownloader>();
         }
 
         // ------------------------------------------------------------------
@@ -182,6 +190,41 @@ namespace NomadGo.AppShell
             {
                 try { syncPulseManager.Initialize(appConfig.sync); }
                 catch (System.Exception ex) { Debug.LogError($"[AppManager] SyncPulseManager: {ex.Message}"); }
+            }
+
+            // Initialize ModelDownloader before FrameProcessor so cached paths are
+            // available when the ONNX engine starts loading.
+            if (modelDownloader != null && !string.IsNullOrEmpty(appConfig.model.remote_url))
+            {
+                try
+                {
+                    modelDownloader.Initialize(appConfig.model);
+
+                    // When a fresh download completes at runtime, hot-swap the model
+                    modelDownloader.OnComplete += (success) =>
+                    {
+                        if (success && frameProcessor != null)
+                        {
+                            string newOnnx   = modelDownloader.CachedModelPath;
+                            string newLabels = modelDownloader.CachedLabelsPath;
+                            if (!string.IsNullOrEmpty(newOnnx))
+                            {
+                                Debug.Log("[AppManager] New model downloaded — hot-swapping ONNX engine.");
+                                var engine = frameProcessor.GetComponent<Vision.ONNXInferenceEngine>()
+                                          ?? FindObjectOfType<Vision.ONNXInferenceEngine>();
+                                engine?.ReloadModel(newOnnx, newLabels);
+                            }
+                        }
+                    };
+                }
+                catch (System.Exception ex) { Debug.LogError($"[AppManager] ModelDownloader: {ex.Message}"); }
+            }
+            else if (modelDownloader != null)
+            {
+                // remote_url is empty — initialise silently (no-op for downloader, but
+                // makes the component available for future UI queries)
+                try { modelDownloader.Initialize(appConfig.model); }
+                catch (System.Exception ex) { Debug.LogError($"[AppManager] ModelDownloader (dormant): {ex.Message}"); }
             }
 
             if (frameProcessor != null)

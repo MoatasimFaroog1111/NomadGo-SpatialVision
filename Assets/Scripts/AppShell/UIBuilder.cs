@@ -10,6 +10,18 @@ namespace NomadGo.AppShell
         private string statusMessage = "NomadGo Ready — Press Start Scan";
         private string reportsContent = "No sessions recorded yet.\nStart a scan to create a report.";
 
+        // ---- Model download UI state ----
+        private bool   modelDownloadInProgress = false;
+        private float  modelDownloadProgress   = 0f;
+        private bool   modelUpdateAvailable    = false;
+        private bool   modelJustDownloaded     = false;
+        private string modelIndicatorText      = "";
+        // Cached style for the model indicator pill
+        private GUIStyle modelPillStyle;
+        private GUIStyle progressBarBgStyle;
+        private GUIStyle progressBarFillStyle;
+        private bool     modelStylesInit = false;
+
         // Live detection data
         private int detectedTotal = 0;
         private Dictionary<string, int> detectedByLabel = new Dictionary<string, int>();
@@ -51,6 +63,61 @@ namespace NomadGo.AppShell
         private void Start()
         {
             safeArea = Screen.safeArea;
+            SubscribeModelDownloaderEvents();
+        }
+
+        private void SubscribeModelDownloaderEvents()
+        {
+            var app = AppManager.Instance;
+            if (app == null) return;
+            var dl = app.ModelDownloader;
+            if (dl == null) return;
+
+            // Refresh indicator now
+            RefreshModelIndicator(dl);
+
+            dl.OnProgress += (p) =>
+            {
+                modelDownloadInProgress = true;
+                modelDownloadProgress   = p;
+                modelIndicatorText      = $"Downloading model... {p * 100f:F0}%";
+            };
+
+            dl.OnComplete += (success) =>
+            {
+                modelDownloadInProgress = false;
+                modelDownloadProgress   = 0f;
+                modelUpdateAvailable    = false;
+
+                if (success)
+                {
+                    modelJustDownloaded = true;
+                    RefreshModelIndicator(dl);
+                }
+                else
+                {
+                    modelIndicatorText = "Download failed";
+                }
+            };
+
+            dl.OnUpdateFound += () =>
+            {
+                modelUpdateAvailable = true;
+                modelIndicatorText   = $"v{dl.CachedVersion} — Update: v{dl.PendingVersion}";
+            };
+        }
+
+        private void RefreshModelIndicator(Vision.ModelDownloader dl)
+        {
+            if (dl == null) { modelIndicatorText = ""; return; }
+
+            string ver = dl.HasCachedModel ? dl.CachedVersion : "";
+            if (string.IsNullOrEmpty(ver))
+            {
+                var app = AppManager.Instance;
+                ver = (app != null && app.Config != null) ? app.Config.model.model_version : "";
+            }
+            modelIndicatorText = string.IsNullOrEmpty(ver) ? "" : $"Model v{ver} ✓";
         }
 
         private void Update()
@@ -58,6 +125,26 @@ namespace NomadGo.AppShell
             var app = AppManager.Instance;
             var fp  = app != null ? app.FrameProcessor : null;
             var cm  = app != null ? app.CountManager   : null;
+
+            // Re-subscribe when AppManager becomes available after UIBuilder.Start
+            var dl = app != null ? app.ModelDownloader : null;
+            if (dl != null && string.IsNullOrEmpty(modelIndicatorText))
+            {
+                SubscribeModelDownloaderEvents();
+            }
+            // Keep indicator text live-synced while download is active
+            if (dl != null && dl.IsDownloading)
+            {
+                modelDownloadInProgress = true;
+                modelDownloadProgress   = dl.Progress;
+                modelIndicatorText      = $"Downloading model... {dl.Progress * 100f:F0}%";
+            }
+            // Reflect live update-available state from downloader
+            if (dl != null && dl.UpdateAvailable && !modelUpdateAvailable)
+            {
+                modelUpdateAvailable = true;
+                modelIndicatorText   = $"v{dl.CachedVersion} — Update: v{dl.PendingVersion}";
+            }
 
             // Show model loading state when NOT scanning yet
             if (!isScanning)
@@ -146,6 +233,28 @@ namespace NomadGo.AppShell
             titleStyle.alignment = TextAnchor.MiddleCenter;
 
             stylesInit = true;
+            InitModelStyles();
+        }
+
+        private void InitModelStyles()
+        {
+            if (modelStylesInit) return;
+            float H = Screen.height;
+
+            modelPillStyle = new GUIStyle();
+            modelPillStyle.fontSize = Mathf.RoundToInt(H * 0.013f);
+            modelPillStyle.normal.textColor = new Color(0.6f, 1f, 0.6f, 1f);
+            modelPillStyle.alignment = TextAnchor.MiddleRight;
+            modelPillStyle.normal.background = GetCachedTex(new Color(0, 0, 0, 0.55f));
+            modelPillStyle.padding = new RectOffset(4, 6, 0, 0);
+
+            progressBarBgStyle = new GUIStyle();
+            progressBarBgStyle.normal.background = GetCachedTex(new Color(0.1f, 0.1f, 0.1f, 0.85f));
+
+            progressBarFillStyle = new GUIStyle();
+            progressBarFillStyle.normal.background = GetCachedTex(new Color(0.08f, 0.63f, 0.08f, 0.92f));
+
+            modelStylesInit = true;
         }
 
         private void InitBoxStyles()
@@ -189,6 +298,28 @@ namespace NomadGo.AppShell
             GUI.Box(new Rect(0, 0, W, statusHeight), GUIContent.none, statusStyle);
             GUI.Label(new Rect(0, 0, W, statusHeight), statusMessage, statusStyle);
 
+            // Model indicator pill in top-right of status bar
+            if (!string.IsNullOrEmpty(modelIndicatorText))
+            {
+                float pillW = W * 0.38f;
+                float pillH = statusHeight;
+                // Choose colour based on state
+                Color pillTextColor = modelDownloadInProgress
+                    ? Color.yellow
+                    : (modelUpdateAvailable ? new Color(1f, 0.7f, 0.2f) : new Color(0.55f, 1f, 0.55f));
+                modelPillStyle.normal.textColor = pillTextColor;
+                GUI.Label(new Rect(W - pillW, 0, pillW, pillH), modelIndicatorText, modelPillStyle);
+            }
+
+            // Download progress bar (shown just below the status bar)
+            if (modelDownloadInProgress)
+            {
+                float barH = Mathf.Max(8f, H * 0.012f);
+                float barY = statusHeight;
+                GUI.Box(new Rect(0, barY, W, barH), GUIContent.none, progressBarBgStyle);
+                GUI.Box(new Rect(0, barY, W * Mathf.Clamp01(modelDownloadProgress), barH), GUIContent.none, progressBarFillStyle);
+            }
+
             if (showReports)
             {
                 DrawReportsPanel(W, H);
@@ -204,13 +335,31 @@ namespace NomadGo.AppShell
             DrawButton(new Rect(2*m + halfW, row2Y, halfW, btnHeight),
                 "Reports",  new Color(0.47f, 0.16f, 0.63f, 0.92f), OnToggleReports);
 
+            // ---- Model download / update row (above Export/Reports row) ----
+            if (modelJustDownloaded)
+            {
+                float reloadRowY = row2Y - m - btnHeight;
+                DrawButton(new Rect(m, reloadRowY, W - 2*m, btnHeight),
+                    "Model updated — tap to reload", new Color(0.08f, 0.45f, 0.63f, 0.92f), OnReloadModelNow);
+            }
+            else if (modelUpdateAvailable && !modelDownloadInProgress)
+            {
+                float updateRowY = row2Y - m - btnHeight;
+                DrawButton(new Rect(m, updateRowY, W - 2*m, btnHeight),
+                    $"Update Available ({(AppManager.Instance?.ModelDownloader?.PendingVersion ?? "")}) ↓ Download",
+                    new Color(0.63f, 0.45f, 0.08f, 0.92f), OnDownloadUpdate);
+            }
+
             if (!isScanning)
             {
                 var fp = AppManager.Instance != null ? AppManager.Instance.FrameProcessor : null;
                 bool engineReady = fp != null && fp.IsEngineReady;
                 bool loading     = fp != null && fp.IsEngineLoading;
 
-                if (loading)
+                if (modelDownloadInProgress)
+                    DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
+                        $"Downloading model {modelDownloadProgress * 100f:F0}%", new Color(0.35f, 0.35f, 0.35f, 0.85f), null);
+                else if (loading)
                     DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
                         "Loading AI model...", new Color(0.35f, 0.35f, 0.35f, 0.85f), null);
                 else if (!engineReady)
@@ -223,6 +372,39 @@ namespace NomadGo.AppShell
             else
                 DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
                     "\u25A0  Stop Scan", new Color(0.78f, 0.12f, 0.12f, 0.92f), OnStopScan);
+        }
+
+        // ---- Model download / reload actions ----
+
+        private void OnDownloadUpdate()
+        {
+            var dl = AppManager.Instance?.ModelDownloader;
+            if (dl == null) return;
+            dl.DownloadModel(
+                p  => { modelDownloadProgress = p; },
+                ok => {
+                    if (ok) modelJustDownloaded = true;
+                    modelUpdateAvailable = false;
+                }
+            );
+        }
+
+        private void OnReloadModelNow()
+        {
+            modelJustDownloaded = false;
+            var dl = AppManager.Instance?.ModelDownloader;
+            if (dl == null) return;
+
+            var engine = FindObjectOfType<Vision.ONNXInferenceEngine>();
+            if (engine != null)
+            {
+                engine.ReloadModel(dl.CachedModelPath, dl.CachedLabelsPath);
+                RefreshModelIndicator(dl);
+            }
+            else
+            {
+                SetStatus("Model cached — will load on next launch.");
+            }
         }
 
         private void DrawDetectionBoxes(float W, float H)
