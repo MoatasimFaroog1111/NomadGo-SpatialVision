@@ -180,6 +180,11 @@ jobs:
         with:
           project_id: ${{ secrets.FIREBASE_PROJECT_ID }}
 
+      - name: Enable Cloud Testing API
+        run: |
+          gcloud services enable testing.googleapis.com
+          gcloud services enable toolresults.googleapis.com
+
       - name: Run Robo Test on Firebase Test Lab
         run: |
           APK=$(find apk -name "*.apk" | head -1)
@@ -191,7 +196,6 @@ jobs:
             --device model=bluejay,version=33,locale=en,orientation=portrait \
             --timeout 120s \
             --record-video \
-            --results-bucket=gs://${{ secrets.FIREBASE_PROJECT_ID }}-test-results \
             --results-dir=nomadgo-${{ github.run_number }} \
             --client-details matrixLabel="NomadGo v${{ github.run_number }}" \
             --no-auto-google-login \
