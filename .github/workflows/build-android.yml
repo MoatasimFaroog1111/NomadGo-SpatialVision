@@ -153,3 +153,62 @@ jobs:
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ── Firebase Test Lab - Robo Test on Real Device ───────────────────────────
+  testOnFirebase:
+    name: Test on Firebase Test Lab
+    needs: buildForAndroid
+    runs-on: ubuntu-latest
+    # Runs only when Firebase secrets are configured
+    # To enable: add FIREBASE_SERVICE_ACCOUNT and FIREBASE_PROJECT_ID secrets
+    timeout-minutes: 30
+
+    steps:
+      - name: Download APK Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: NomadGo-SpatialVision-Release-APK
+          path: apk
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+
+      - name: Set up Google Cloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.FIREBASE_PROJECT_ID }}
+
+      - name: Run Robo Test on Firebase Test Lab
+        run: |
+          APK=$(find apk -name "*.apk" | head -1)
+          echo "Testing APK: $APK"
+
+          gcloud firebase test android run \
+            --type robo \
+            --app "$APK" \
+            --device model=bluejay,version=33,locale=en,orientation=portrait \
+            --timeout 120s \
+            --record-video \
+            --results-bucket=gs://${{ secrets.FIREBASE_PROJECT_ID }}-test-results \
+            --results-dir=nomadgo-${{ github.run_number }} \
+            --client-details matrixLabel="NomadGo v${{ github.run_number }}" \
+            --no-auto-google-login \
+            2>&1 | tee /tmp/ftl-output.txt
+
+          echo "Firebase Test Lab completed"
+
+      - name: Extract Test Results
+        if: always()
+        run: |
+          echo "## Firebase Test Lab Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          if grep -q "Passed" /tmp/ftl-output.txt; then
+            echo "✅ **Robo test PASSED** - App launched successfully on real device" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "❌ **Robo test had issues** - Check Firebase console for details" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "View full results in [Firebase Console](https://console.firebase.google.com/project/${{ secrets.FIREBASE_PROJECT_ID }}/testlab)" >> $GITHUB_STEP_SUMMARY
+          cat /tmp/ftl-output.txt >> $GITHUB_STEP_SUMMARY || true
