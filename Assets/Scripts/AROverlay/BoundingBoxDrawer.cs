@@ -23,8 +23,12 @@ namespace NomadGo.AROverlay
         {
             Shader shader = Shader.Find("Hidden/Internal-Colored");
             if (shader == null)
+                shader = Shader.Find("UI/Default");
+            if (shader == null)
+                shader = Shader.Find("Unlit/Color");
+            if (shader == null)
             {
-                Debug.LogWarning("[BoundingBoxDrawer] Shader not found.");
+                Debug.LogWarning("[BoundingBoxDrawer] No suitable shader found.");
                 return;
             }
 

@@ -21,6 +21,11 @@ namespace NomadGo.AppShell
 
         private void Awake()
         {
+            // FIRST: force skybox material to null and render settings to safe values
+            RenderSettings.skybox = null;
+            RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
+            RenderSettings.ambientLight = Color.black;
+
             // Disable all AR Foundation components — we use WebCamTexture, not ARCore.
             // ARCameraBackground / ARCameraManager left enabled cause magenta on AR-init failure.
             string[] arTypes = { "ARCameraBackground", "ARCameraManager",
@@ -43,6 +48,14 @@ namespace NomadGo.AppShell
                 cam.clearFlags      = CameraClearFlags.SolidColor;
                 cam.backgroundColor = Color.black;
                 cam.depth           = 0;
+                // Remove any ARCameraBackground component that renders the pink/magenta
+                var arBg = cam.GetComponent("ARCameraBackground") as MonoBehaviour;
+                if (arBg != null)
+                {
+                    arBg.enabled = false;
+                    Destroy(arBg);
+                    Debug.Log("[CameraFix] Removed ARCameraBackground from camera");
+                }
             }
         }
 
@@ -50,6 +63,23 @@ namespace NomadGo.AppShell
         {
             BuildCameraCanvas();
             StartCoroutine(StartCamera());
+        }
+
+        /// <summary>
+        /// Continuously enforce camera clear flags every frame to prevent
+        /// any late-initializing component from switching back to Skybox.
+        /// </summary>
+        private void LateUpdate()
+        {
+            foreach (var cam in Camera.allCameras)
+            {
+                if (cam.clearFlags != CameraClearFlags.SolidColor)
+                {
+                    cam.clearFlags      = CameraClearFlags.SolidColor;
+                    cam.backgroundColor = Color.black;
+                    Debug.LogWarning($"[CameraFix] Re-forced SolidColor on {cam.name}");
+                }
+            }
         }
 
         private void BuildCameraCanvas()
@@ -71,7 +101,16 @@ namespace NomadGo.AppShell
             rt.pivot            = new Vector2(0.5f, 0.5f);
             rt.anchoredPosition = Vector2.zero;
             rt.sizeDelta        = new Vector2(Screen.width, Screen.height);
-            rawImage.color      = Color.black;
+
+            // Use a solid black texture as initial placeholder (NOT just Color.black on rawImage)
+            // This ensures no pink/magenta can leak through even if the camera never starts.
+            var blackTex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            var pixels = blackTex.GetPixels();
+            for (int i = 0; i < pixels.Length; i++) pixels[i] = Color.black;
+            blackTex.SetPixels(pixels);
+            blackTex.Apply();
+            rawImage.texture = blackTex;
+            rawImage.color   = Color.white;  // white tint on black texture = shows black
         }
 
         private IEnumerator StartCamera()
@@ -99,6 +138,7 @@ namespace NomadGo.AppShell
             {
                 diagText = "No camera found on device.";
                 Debug.LogError("[CameraFix] No camera device found.");
+                // Keep the black placeholder — no pink screen
                 yield break;
             }
 
@@ -115,6 +155,7 @@ namespace NomadGo.AppShell
                 {
                     diagText = "Camera timed out. Check permissions.";
                     Debug.LogError("[CameraFix] Camera startup timed out.");
+                    // Keep the black placeholder — no pink screen
                     yield break;
                 }
                 yield return null;
@@ -144,13 +185,13 @@ namespace NomadGo.AppShell
             rawImage.texture = webCamTexture;
             rawImage.color   = Color.white;
 
-            var rt = rawImage.rectTransform;
+            var rt2 = rawImage.rectTransform;
             // sizeDelta in local (pre-rotation) space; after rotation it fills the screen
-            rt.sizeDelta        = new Vector2(camW * scale, camH * scale);
+            rt2.sizeDelta        = new Vector2(camW * scale, camH * scale);
             // Rotate to correct orientation  (Unity +z = CCW, so -rotAngle = clockwise correction)
-            rt.localEulerAngles = new Vector3(0f, 0f, -rotAngle);
+            rt2.localEulerAngles = new Vector3(0f, 0f, -rotAngle);
             // Mirror only if needed (front cameras)
-            rt.localScale       = new Vector3(mirrored ? -1f : 1f, 1f, 1f);
+            rt2.localScale       = new Vector3(mirrored ? -1f : 1f, 1f, 1f);
 
             cameraReady = true;
             diagText    = "";
