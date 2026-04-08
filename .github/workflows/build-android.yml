@@ -188,7 +188,7 @@ jobs:
           gcloud firebase test android run \
             --type robo \
             --app "$APK" \
-            --device model=bluejay,version=33,locale=en,orientation=portrait \
+            --device model=MediumPhone.arm,version=34,locale=en,orientation=portrait \
             --timeout 120s \
             --record-video \
             --results-dir=nomadgo-${{ github.run_number }} \
