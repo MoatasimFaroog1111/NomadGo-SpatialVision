@@ -170,7 +170,7 @@ PlayerSettings:
   AndroidTargetSdkVersion: 34
   AndroidPreferredInstallLocation: 1
   aotOptions:
-  stripEngineCode: 1
+  stripEngineCode: 0
   iPhoneStrippingLevel: 0
   iPhoneScriptCallOptimization: 0
   ForceInternetPermission: 0
@@ -246,7 +246,9 @@ PlayerSettings:
   m_BuildTargetShaderSettings: []
   m_BuildTargetGraphicsJobs: []
   m_BuildTargetGraphicsJobMode: []
-  m_BuildTargetGraphicsAPIs: []
+  m_BuildTargetGraphicsAPIs:
+    Android:
+    - OpenGLES3
   openGLRequireES31: 0
   openGLRequireES31AEP: 0
   openGLRequireES32: 0
