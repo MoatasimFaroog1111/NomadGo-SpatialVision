@@ -180,11 +180,6 @@ jobs:
         with:
           project_id: ${{ secrets.FIREBASE_PROJECT_ID }}
 
-      - name: Enable Cloud Testing API
-        run: |
-          gcloud services enable testing.googleapis.com
-          gcloud services enable toolresults.googleapis.com
-
       - name: Run Robo Test on Firebase Test Lab
         run: |
           APK=$(find apk -name "*.apk" | head -1)
