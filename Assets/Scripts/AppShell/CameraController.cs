@@ -24,6 +24,14 @@ namespace NomadGo.AppShell
 
         private void Start()
         {
+            // CameraFix handles camera — avoid dual-camera conflict
+            if (FindObjectOfType<CameraFix>() != null)
+            {
+                Debug.Log("[CameraController] CameraFix present — disabling self to avoid conflict.");
+                enabled = false;
+                return;
+            }
+
             StartCoroutine(InitializeCamera());
         }
 

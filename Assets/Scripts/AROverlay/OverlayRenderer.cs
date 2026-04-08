@@ -32,6 +32,14 @@ namespace NomadGo.AROverlay
 
         private void Start()
         {
+            // If UIBuilder exists, it handles rendering — disable this overlay
+            if (FindObjectOfType<AppShell.UIBuilder>() != null)
+            {
+                Debug.Log("[OverlayRenderer] UIBuilder detected — disabling duplicate overlay.");
+                enabled = false;
+                return;
+            }
+
             cameraFix = FindObjectOfType<AppShell.CameraFix>();
 
             var countManager = FindObjectOfType<CountManager>();

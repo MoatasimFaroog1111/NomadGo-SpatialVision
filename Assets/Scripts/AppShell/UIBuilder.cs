@@ -21,6 +21,20 @@ namespace NomadGo.AppShell
         private GUIStyle boxLabelStyle;
         private bool boxStylesInit = false;
 
+        private Dictionary<Color, Texture2D> texCache = new Dictionary<Color, Texture2D>();
+
+        private Texture2D GetCachedTex(Color c)
+        {
+            if (!texCache.TryGetValue(c, out var t) || t == null)
+            {
+                t = new Texture2D(1, 1);
+                t.SetPixel(0, 0, c);
+                t.Apply();
+                texCache[c] = t;
+            }
+            return t;
+        }
+
         // OnGUI styles
         private GUIStyle btnStyle;
         private GUIStyle statusStyle;
@@ -253,16 +267,13 @@ namespace NomadGo.AppShell
 
         private void DrawButton(Rect rect, string label, Color color, System.Action onClick)
         {
-            Texture2D nTex = new Texture2D(1, 1);
-            nTex.SetPixel(0, 0, color); nTex.Apply();
-            btnStyle.normal.background = nTex;
+            btnStyle.normal.background = GetCachedTex(color);
 
             Color hc = new Color(
                 Mathf.Min(1f, color.r + 0.12f),
                 Mathf.Min(1f, color.g + 0.12f),
                 Mathf.Min(1f, color.b + 0.12f), color.a);
-            Texture2D hTex = new Texture2D(1, 1);
-            hTex.SetPixel(0, 0, hc); hTex.Apply();
+            var hTex = GetCachedTex(hc);
             btnStyle.hover.background  = hTex;
             btnStyle.active.background = hTex;
 
