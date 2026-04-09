@@ -15,17 +15,12 @@ namespace NomadGo.Vision
     public class ONNXInferenceEngine : MonoBehaviour
     {
         private string   modelPath;
-        private string   labelsPath;          // path from config (Resources key)
         private int      inputWidth           = 640;
         private int      inputHeight          = 640;
         private float    confidenceThreshold  = 0.45f;
         private float    nmsThreshold         = 0.5f;
         private int      maxDetections        = 100;
         private string[] labels;
-
-        // Cached-model overrides — set by AppManager after ModelDownloader finishes
-        private string   overrideOnnxPath   = null; // full path to cached .onnx
-        private string   overrideLabelsPath = null; // full path to cached labels.txt
 
         private bool  isLoaded        = false;
         private bool  useDemoMode     = false;
@@ -43,62 +38,49 @@ namespace NomadGo.Vision
         public bool  IsInDemoMode        => useDemoMode;
         public float LastInferenceTimeMs => lastInferenceMs;
 
+        // Cached-model overrides — set externally for hot-swap
+        private string overrideOnnxPath   = null;
+        private string overrideLabelsPath = null;
+
         public void Initialize(AppShell.ModelConfig config)
         {
             modelPath           = config.path;
-            labelsPath          = config.labels_path;
             inputWidth          = config.input_width;
             inputHeight         = config.input_height;
             confidenceThreshold = config.confidence_threshold;
             nmsThreshold        = config.nms_threshold;
             maxDetections       = config.max_detections;
 
-            // Check if a ModelDownloader has already fetched a cached model
-            var downloader = FindObjectOfType<ModelDownloader>();
-            if (downloader != null && downloader.HasCachedModel)
-            {
-                overrideOnnxPath   = downloader.CachedModelPath;
-                overrideLabelsPath = string.IsNullOrEmpty(downloader.CachedLabelsPath)
-                                        ? null : downloader.CachedLabelsPath;
-                Debug.Log($"[ONNXEngine] Using cached model: {overrideOnnxPath}");
-            }
-
-            LoadLabels(labelsPath);
+            LoadLabels(config.labels_path);
             StartCoroutine(LoadModelAsync());
         }
 
         /// <summary>
         /// Hot-swaps the loaded model at runtime (e.g. after a background download).
-        /// Disposes the old Barracuda worker, loads from the provided paths, and
-        /// re-initialises inference. Falls back to demo mode on failure.
         /// </summary>
         public void ReloadModel(string onnxPath, string newLabelsPath)
         {
-            if (isLoading)
-            {
-                Debug.LogWarning("[ONNXEngine] ReloadModel called while already loading — ignored.");
-                return;
-            }
-
+            if (isLoading) return;
             Debug.Log($"[ONNXEngine] ReloadModel → {onnxPath}");
             overrideOnnxPath   = onnxPath;
             overrideLabelsPath = newLabelsPath;
-
 #if UNITY_BARRACUDA
-            // Dispose existing worker so the new load starts clean
             barracudaWorker?.Dispose();
             barracudaWorker = null;
             barracudaModel  = null;
             barracudaReady  = false;
 #endif
-            isLoaded  = false;
+            isLoaded    = false;
             useDemoMode = false;
-
-            if (!string.IsNullOrEmpty(newLabelsPath) && File.Exists(newLabelsPath))
-                LoadLabelsFromFile(newLabelsPath);
-            else
-                LoadLabels(labelsPath);
-
+            if (!string.IsNullOrEmpty(newLabelsPath) && System.IO.File.Exists(newLabelsPath))
+            {
+                try
+                {
+                    string text = System.IO.File.ReadAllText(newLabelsPath);
+                    labels = text.Split(new[] { '\n', '\r' }, System.StringSplitOptions.RemoveEmptyEntries);
+                }
+                catch { LoadLabels(modelPath); }
+            }
             StartCoroutine(LoadModelAsync());
         }
 
@@ -125,24 +107,16 @@ namespace NomadGo.Vision
             return $"class_{classId}";
         }
 
-        private void LoadLabels(string cfgLabelsPath)
+        private void LoadLabels(string labelsPath)
         {
-            // Priority 1: cached labels file on disk (set by ModelDownloader)
-            if (!string.IsNullOrEmpty(overrideLabelsPath) && File.Exists(overrideLabelsPath))
-            {
-                LoadLabelsFromFile(overrideLabelsPath);
-                return;
-            }
-
-            // Priority 2: Resources folder (bundled)
-            string res = (cfgLabelsPath ?? "").Replace(".txt", "").Replace("Models/", "");
+            string res = labelsPath.Replace(".txt", "").Replace("Models/", "");
             TextAsset asset = Resources.Load<TextAsset>(res)
                            ?? Resources.Load<TextAsset>("labels");
 
             if (asset != null)
             {
                 labels = asset.text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-                Debug.Log($"[ONNXEngine] {labels.Length} labels loaded from Resources.");
+                Debug.Log($"[ONNXEngine] {labels.Length} labels loaded.");
             }
             else
             {
@@ -163,85 +137,35 @@ namespace NomadGo.Vision
             }
         }
 
-        /// <summary>Loads labels from an absolute file-system path (e.g. persistentDataPath cache).</summary>
-        private void LoadLabelsFromFile(string filePath)
-        {
-            try
-            {
-                string text = File.ReadAllText(filePath);
-                labels = text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-                Debug.Log($"[ONNXEngine] {labels.Length} labels loaded from cached file: {filePath}");
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[ONNXEngine] Failed to read cached labels ({filePath}): {ex.Message}");
-                // Fall through to built-in COCO labels
-                labels = null;
-                LoadLabels(labelsPath);
-            }
-        }
-
         private IEnumerator LoadModelAsync()
         {
             isLoading = true;
 #if UNITY_BARRACUDA
-            // Priority 1: cached model on disk (downloaded by ModelDownloader)
-            bool usingCached = !string.IsNullOrEmpty(overrideOnnxPath) && File.Exists(overrideOnnxPath);
-            string onnxPath  = usingCached
-                ? overrideOnnxPath
-                : Path.Combine(Application.streamingAssetsPath, modelPath);
-
-            Debug.Log($"[ONNXEngine] Loading: {onnxPath}" + (usingCached ? " (cached)" : " (bundled)"));
+            string onnxPath = Path.Combine(Application.streamingAssetsPath, modelPath);
+            Debug.Log($"[ONNXEngine] Loading: {onnxPath}");
 
             byte[] bytes = null;
 
-            if (usingCached)
-            {
-                // Cached file lives in persistentDataPath — read directly
-                try
-                {
-                    bytes = File.ReadAllBytes(onnxPath);
-                }
-                catch (Exception ex)
-                {
-                    Debug.LogWarning($"[ONNXEngine] Failed to read cached model ({ex.Message}) → falling back to bundled.");
-                    usingCached = false;
-                    onnxPath    = Path.Combine(Application.streamingAssetsPath, modelPath);
-                }
-                yield return null;
-            }
-
-            // If not cached (or cached read failed), load from StreamingAssets
-            if (!usingCached)
-            {
 #if UNITY_ANDROID && !UNITY_EDITOR
-                using (var req = UnityWebRequest.Get(onnxPath))
+            using (var req = UnityWebRequest.Get(onnxPath))
+            {
+                yield return req.SendWebRequest();
+                if (req.result != UnityWebRequest.Result.Success)
                 {
-                    yield return req.SendWebRequest();
-                    if (req.result != UnityWebRequest.Result.Success)
-                    {
-                        Debug.LogWarning($"[ONNXEngine] Failed: {req.error} → DEMO mode.");
-                        ActivateDemoMode(); yield break;
-                    }
-                    bytes = req.downloadHandler.data;
-                }
-#else
-                if (!File.Exists(onnxPath))
-                {
-                    Debug.LogWarning($"[ONNXEngine] Not found: {onnxPath} → DEMO mode.");
+                    Debug.LogWarning($"[ONNXEngine] Failed: {req.error} → DEMO mode.");
                     ActivateDemoMode(); yield break;
                 }
-                bytes = File.ReadAllBytes(onnxPath);
-                yield return null;
-#endif
+                bytes = req.downloadHandler.data;
             }
-
-            if (bytes == null)
+#else
+            if (!File.Exists(onnxPath))
             {
-                Debug.LogWarning("[ONNXEngine] No model bytes available → DEMO mode.");
+                Debug.LogWarning($"[ONNXEngine] Not found: {onnxPath} → DEMO mode.");
                 ActivateDemoMode(); yield break;
             }
-
+            bytes = File.ReadAllBytes(onnxPath);
+            yield return null;
+#endif
             try
             {
                 barracudaModel  = ModelLoader.Load(bytes, verbose: false);
