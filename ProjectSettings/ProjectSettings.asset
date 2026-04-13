@@ -217,7 +217,9 @@ PlayerSettings:
   useCustomGradlePropertiesTemplate: 0
   useCustomGradleSettingsTemplate: 0
   useCustomProguardFile: 0
-  AndroidTargetArchitectures: 2
+  # FIX: was 2 (ARM32 only) - Barracuda 3.0 requires ARM64
+  # Value 1 = ARM64 only
+  AndroidTargetArchitectures: 1
   AndroidTargetDevices: 0
   AndroidSplashScreenScale: 0
   androidSplashScreen: {fileID: 0}
@@ -289,8 +291,10 @@ PlayerSettings:
     Standalone: 0
   il2cppCompilerConfiguration: {}
   il2cppCodeGeneration: {}
+  # FIX: was 1 (Low) - Low stripping removes Barracuda reflection-based type lookups
+  # 0 = Disabled (no stripping) - safest for ML inference libraries
   managedStrippingLevel:
-    Android: 1
+    Android: 0
   incrementalIl2cppBuild: {}
   suppressCommonWarnings: 1
   allowUnsafeCode: 0
