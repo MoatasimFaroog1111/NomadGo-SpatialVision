@@ -1,9 +1,13 @@
 import express from "express";
+import path from "path";
+import { fileURLToPath } from "url";
 import pulseRouter    from "./routes/pulse.js";
 import sessionsRouter from "./routes/sessions.js";
 
 const app  = express();
 const PORT = Number(process.env.PORT ?? 5000);
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 // ── Middleware ────────────────────────────────────────────────────────────────
 
@@ -24,10 +28,21 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true, ts: new Date().toISOString() });
 });
 
-// 404 handler
-app.use((_req, res) => {
-  res.status(404).json({ error: "Not found" });
-});
+// ── Static client in production ───────────────────────────────────────────────
+
+if (process.env.NODE_ENV === "production") {
+  const clientDist = path.join(__dirname, "public");
+  app.use(express.static(clientDist));
+  // SPA fallback
+  app.get("*", (_req, res) => {
+    res.sendFile(path.join(clientDist, "index.html"));
+  });
+} else {
+  // 404 handler for dev (client served by Vite dev server)
+  app.use((_req, res) => {
+    res.status(404).json({ error: "Not found" });
+  });
+}
 
 // Global error handler
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
