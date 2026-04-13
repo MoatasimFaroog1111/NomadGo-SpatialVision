@@ -27,6 +27,12 @@ namespace NomadGo.Vision
         private bool  isLoading       = false;
         private float lastInferenceMs = 0f;
 
+        // FIX: retry constants — Android OBB extraction can be slow on first launch
+        private const int   MAX_RETRIES         = 3;
+        private const float RETRY_DELAY_SECONDS = 2f;
+        // FIX: increased timeout — yolov8n.onnx is ~12 MB, needs more than default 30s on slow devices
+        private const int   REQUEST_TIMEOUT_SECONDS = 120;
+
 #if UNITY_BARRACUDA
         private Model   barracudaModel;
         private IWorker barracudaWorker;
@@ -38,7 +44,6 @@ namespace NomadGo.Vision
         public bool  IsInDemoMode        => useDemoMode;
         public float LastInferenceTimeMs => lastInferenceMs;
 
-        // Cached-model overrides — set externally for hot-swap
         private string overrideOnnxPath   = null;
         private string overrideLabelsPath = null;
 
@@ -55,9 +60,6 @@ namespace NomadGo.Vision
             StartCoroutine(LoadModelAsync());
         }
 
-        /// <summary>
-        /// Hot-swaps the loaded model at runtime (e.g. after a background download).
-        /// </summary>
         public void ReloadModel(string onnxPath, string newLabelsPath)
         {
             if (isLoading) return;
@@ -72,13 +74,9 @@ namespace NomadGo.Vision
 #endif
             isLoaded    = false;
             useDemoMode = false;
-            if (!string.IsNullOrEmpty(newLabelsPath) && System.IO.File.Exists(newLabelsPath))
+            if (!string.IsNullOrEmpty(newLabelsPath) && File.Exists(newLabelsPath))
             {
-                try
-                {
-                    string text = System.IO.File.ReadAllText(newLabelsPath);
-                    labels = text.Split(new[] { '\n', '\r' }, System.StringSplitOptions.RemoveEmptyEntries);
-                }
+                try { labels = File.ReadAllText(newLabelsPath).Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries); }
                 catch { LoadLabels(modelPath); }
             }
             StartCoroutine(LoadModelAsync());
@@ -116,7 +114,7 @@ namespace NomadGo.Vision
             if (asset != null)
             {
                 labels = asset.text.Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
-                Debug.Log($"[ONNXEngine] {labels.Length} labels loaded.");
+                Debug.Log($"[ONNXEngine] {labels.Length} labels loaded from Resources.");
             }
             else
             {
@@ -133,59 +131,138 @@ namespace NomadGo.Vision
                     "mouse","remote","keyboard","cell phone","microwave","oven","toaster","sink",
                     "refrigerator","book","clock","vase","scissors","teddy bear","hair drier","toothbrush"
                 };
-                Debug.LogWarning("[ONNXEngine] labels.txt not found — using built-in COCO 80.");
+                Debug.LogWarning("[ONNXEngine] labels.txt not found in Resources — using built-in COCO 80.");
             }
         }
 
         private IEnumerator LoadModelAsync()
         {
             isLoading = true;
+
 #if UNITY_BARRACUDA
-            string onnxPath = Path.Combine(Application.streamingAssetsPath, modelPath);
-            Debug.Log($"[ONNXEngine] Loading: {onnxPath}");
+            // FIX: use overrideOnnxPath if set by ReloadModel, else build from config path
+            string effectivePath = !string.IsNullOrEmpty(overrideOnnxPath)
+                ? overrideOnnxPath
+                : Path.Combine(Application.streamingAssetsPath, modelPath);
+
+            Debug.Log($"[ONNXEngine] Loading model from: {effectivePath}");
+            Debug.Log($"[ONNXEngine] StreamingAssetsPath = {Application.streamingAssetsPath}");
+            Debug.Log($"[ONNXEngine] Platform = {Application.platform}");
 
             byte[] bytes = null;
 
 #if UNITY_ANDROID && !UNITY_EDITOR
-            using (var req = UnityWebRequest.Get(onnxPath))
+            // On Android, StreamingAssets lives inside the APK (JAR/ZIP).
+            // MUST use UnityWebRequest — File.Exists / File.ReadAllBytes do NOT work.
+            // FIX: added retry loop because on first cold launch Android needs time
+            // to extract the APK's StreamingAssets before they’re readable.
+            for (int attempt = 1; attempt <= MAX_RETRIES; attempt++)
             {
-                yield return req.SendWebRequest();
-                if (req.result != UnityWebRequest.Result.Success)
+                Debug.Log($"[ONNXEngine] Android load attempt {attempt}/{MAX_RETRIES}");
+
+                using (var req = UnityWebRequest.Get(effectivePath))
                 {
-                    Debug.LogWarning($"[ONNXEngine] Failed: {req.error} → DEMO mode.");
-                    ActivateDemoMode(); yield break;
+                    // FIX: increased timeout from default (no timeout set = 30s) to 120s
+                    // yolov8n.onnx is ~12 MB — slow devices need more time
+                    req.timeout = REQUEST_TIMEOUT_SECONDS;
+
+                    yield return req.SendWebRequest();
+
+                    if (req.result == UnityWebRequest.Result.Success)
+                    {
+                        bytes = req.downloadHandler.data;
+                        Debug.Log($"[ONNXEngine] Downloaded {bytes.Length / 1024 / 1024f:F1} MB on attempt {attempt}");
+                        break;
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[ONNXEngine] Attempt {attempt} failed: {req.error} | HTTP: {req.responseCode} | URL: {effectivePath}");
+
+                        if (attempt < MAX_RETRIES)
+                        {
+                            Debug.Log($"[ONNXEngine] Retrying in {RETRY_DELAY_SECONDS}s...");
+                            yield return new WaitForSeconds(RETRY_DELAY_SECONDS);
+                        }
+                        else
+                        {
+                            Debug.LogError($"[ONNXEngine] All {MAX_RETRIES} attempts failed. Last error: {req.error}");
+                            Debug.LogError($"[ONNXEngine] CRITICAL: yolov8n.onnx could not be loaded → falling back to DEMO mode.");
+                            Debug.LogError($"[ONNXEngine] Verify the file exists at: Assets/StreamingAssets/Models/yolov8n.onnx");
+                            isLoading = false;
+                            ActivateDemoMode();
+                            yield break;
+                        }
+                    }
                 }
-                bytes = req.downloadHandler.data;
             }
 #else
-            if (!File.Exists(onnxPath))
+            // Editor / Desktop: direct File I/O is fine
+            if (!File.Exists(effectivePath))
             {
-                Debug.LogWarning($"[ONNXEngine] Not found: {onnxPath} → DEMO mode.");
-                ActivateDemoMode(); yield break;
+                Debug.LogError($"[ONNXEngine] File not found: {effectivePath} → DEMO mode.");
+                Debug.LogError($"[ONNXEngine] Place yolov8n.onnx at: Assets/StreamingAssets/Models/yolov8n.onnx");
+                isLoading = false;
+                ActivateDemoMode();
+                yield break;
             }
-            bytes = File.ReadAllBytes(onnxPath);
+            bytes = File.ReadAllBytes(effectivePath);
+            Debug.Log($"[ONNXEngine] Loaded {bytes.Length / 1024 / 1024f:F1} MB from disk.");
             yield return null;
 #endif
+
+            // bytes loaded successfully — now initialize Barracuda
+            if (bytes == null || bytes.Length == 0)
+            {
+                Debug.LogError("[ONNXEngine] Bytes array is null or empty after load → DEMO mode.");
+                isLoading = false;
+                ActivateDemoMode();
+                yield break;
+            }
+
+            // FIX: ModelLoader.Load is synchronous and blocks main thread.
+            // For ~12MB it takes ~1-3s on mobile — acceptable since it’s a one-time startup cost.
+            // If you need async loading, use a background thread + UnityMainThreadDispatcher.
             try
             {
-                barracudaModel  = ModelLoader.Load(bytes, verbose: false);
+                Debug.Log($"[ONNXEngine] Parsing model ({bytes.Length / 1024 / 1024f:F1} MB)...");
+                barracudaModel = ModelLoader.Load(bytes, verbose: false);
 
-                barracudaWorker = WorkerFactory.CreateWorker(
-                    WorkerFactory.Type.CSharpBurst, barracudaModel);
+                // FIX: WorkerFactory.Type.CSharpBurst requires Burst package.
+                // On Android IL2CPP, use ComputePrecompiled for GPU or CSharpBurst for CPU.
+                // FIX: fall back gracefully if GPU worker fails.
+                try
+                {
+                    barracudaWorker = WorkerFactory.CreateWorker(
+                        WorkerFactory.Type.ComputePrecompiled, barracudaModel);
+                    Debug.Log("[ONNXEngine] Worker created: ComputePrecompiled (GPU).");
+                }
+                catch (Exception gpuEx)
+                {
+                    Debug.LogWarning($"[ONNXEngine] GPU worker failed ({gpuEx.Message}), falling back to CSharpBurst (CPU).");
+                    barracudaWorker = WorkerFactory.CreateWorker(
+                        WorkerFactory.Type.CSharpBurst, barracudaModel);
+                    Debug.Log("[ONNXEngine] Worker created: CSharpBurst (CPU fallback).");
+                }
 
                 barracudaReady = true;
                 isLoaded       = true;
                 isLoading      = false;
-                Debug.Log($"[ONNXEngine] Barracuda model ready ({bytes.Length/1024/1024f:F1} MB). Real AI active.");
+                useDemoMode    = false; // FIX: explicitly clear demo mode flag on success
+                Debug.Log($"[ONNXEngine] ✅ Barracuda model ready. Real AI inference ACTIVE.");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[ONNXEngine] Barracuda init failed: {ex.Message} → DEMO mode.");
+                Debug.LogError($"[ONNXEngine] Barracuda model init failed: {ex.GetType().Name}: {ex.Message}");
+                Debug.LogError($"[ONNXEngine] StackTrace: {ex.StackTrace}");
                 isLoading = false;
                 ActivateDemoMode();
             }
 #else
-            Debug.LogWarning("[ONNXEngine] UNITY_BARRACUDA not defined → DEMO mode.");
+            // UNITY_BARRACUDA not defined — this means the Barracuda package is not installed
+            // or UNITY_BARRACUDA is not in Scripting Define Symbols.
+            Debug.LogError("[ONNXEngine] UNITY_BARRACUDA symbol is NOT defined!");
+            Debug.LogError("[ONNXEngine] Fix: Add 'UNITY_BARRACUDA' to ProjectSettings → Player → Scripting Define Symbols");
+            Debug.LogError("[ONNXEngine] AND ensure 'com.unity.barracuda' is in Packages/manifest.json");
             isLoading = false;
             ActivateDemoMode();
             yield return null;
@@ -196,7 +273,8 @@ namespace NomadGo.Vision
         {
             useDemoMode = true;
             isLoaded    = true;
-            Debug.Log("[ONNXEngine] DEMO mode active.");
+            isLoading   = false;
+            Debug.LogWarning("[ONNXEngine] ⚠️ DEMO mode active — using simulated detections. NOT production-ready.");
         }
 
 #if UNITY_BARRACUDA
@@ -204,17 +282,13 @@ namespace NomadGo.Vision
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
-            // Preprocess → NHWC float32 [1, 640, 640, 3] (Barracuda input format)
-            float[] nhwcData = TextureToNHWC(frame);
-            var inputTensor = new Tensor(new TensorShape(1, inputHeight, inputWidth, 3), nhwcData);
+            float[] nhwcData    = TextureToNHWC(frame);
+            var     inputTensor = new Tensor(new TensorShape(1, inputHeight, inputWidth, 3), nhwcData);
 
-            // Execute
             barracudaWorker.Execute(inputTensor);
             inputTensor.Dispose();
 
-            // Get output — YOLOv8 name: "output0"
             Tensor output = barracudaWorker.PeekOutput("output0");
-
             sw.Stop();
             lastInferenceMs = (float)sw.Elapsed.TotalMilliseconds;
 
@@ -237,18 +311,16 @@ namespace NomadGo.Vision
             RenderTexture.ReleaseTemporary(rt);
 
             Color32[] px = tex.GetPixels32();
-            DestroyImmediate(tex); // immediate: avoids deferred-GC buildup during inference
+            DestroyImmediate(tex);
 
-            int hw     = inputWidth * inputHeight;
-            float[] d  = new float[hw * 3]; // NHWC: each pixel has 3 channels
+            int     hw = inputWidth * inputHeight;
+            float[] d  = new float[hw * 3];
 
             for (int i = 0; i < hw; i++)
             {
-                // Flip Y: Unity Y=0 is bottom; NHWC Y=0 is top
                 int row = inputHeight - 1 - (i / inputWidth);
                 int col = i % inputWidth;
                 int s   = row * inputWidth + col;
-                // NHWC: [n, h, w, c] → flat [h*W*C + w*C + c]
                 d[i * 3 + 0] = px[s].r / 255f;
                 d[i * 3 + 1] = px[s].g / 255f;
                 d[i * 3 + 2] = px[s].b / 255f;
@@ -258,12 +330,10 @@ namespace NomadGo.Vision
 
         private List<DetectionResult> ParseYOLOv8Barracuda(Tensor output)
         {
-            // Shape: N=1, H=1, W=8400, C=84
-            // Features: C 0-3 = cx,cy,w,h (in pixels for 640 input); C 4-83 = class scores
             const int numAnchors = 8400;
-            int numClasses = labels != null ? Mathf.Min(labels.Length, 80) : 80;
-            float sx = 1f / inputWidth;
-            float sy = 1f / inputHeight;
+            int       numClasses = labels != null ? Mathf.Min(labels.Length, 80) : 80;
+            float     sx = 1f / inputWidth;
+            float     sy = 1f / inputHeight;
 
             var results = new List<DetectionResult>();
 
@@ -284,8 +354,8 @@ namespace NomadGo.Vision
 
                 string lbl = (labels != null && maxCls < labels.Length) ? labels[maxCls] : $"cls{maxCls}";
                 results.Add(new DetectionResult(maxCls, lbl, maxConf,
-                    new Rect(Mathf.Clamp01(cx - bw*.5f), Mathf.Clamp01(cy - bh*.5f),
-                             Mathf.Clamp(bw, 0.01f, 1f), Mathf.Clamp(bh, 0.01f, 1f))));
+                    new Rect(Mathf.Clamp01(cx - bw * .5f), Mathf.Clamp01(cy - bh * .5f),
+                             Mathf.Clamp(bw, 0.01f, 1f),   Mathf.Clamp(bh, 0.01f, 1f))));
             }
             return results;
         }
@@ -293,10 +363,8 @@ namespace NomadGo.Vision
 
         public static float ComputeIOU(Rect a, Rect b)
         {
-            float x1 = Mathf.Max(a.xMin, b.xMin);
-            float y1 = Mathf.Max(a.yMin, b.yMin);
-            float x2 = Mathf.Min(a.xMax, b.xMax);
-            float y2 = Mathf.Min(a.yMax, b.yMax);
+            float x1    = Mathf.Max(a.xMin, b.xMin), y1 = Mathf.Max(a.yMin, b.yMin);
+            float x2    = Mathf.Min(a.xMax, b.xMax), y2 = Mathf.Min(a.yMax, b.yMax);
             float inter = Mathf.Max(0, x2 - x1) * Mathf.Max(0, y2 - y1);
             float uni   = a.width * a.height + b.width * b.height - inter;
             return uni > 0f ? inter / uni : 0f;
@@ -305,8 +373,8 @@ namespace NomadGo.Vision
         private List<DetectionResult> ApplyNMS(List<DetectionResult> dets)
         {
             dets.Sort((a, b) => b.confidence.CompareTo(a.confidence));
-            var kept = new List<DetectionResult>();
-            var sup  = new bool[dets.Count];
+            var  kept = new List<DetectionResult>();
+            var  sup  = new bool[dets.Count];
             for (int i = 0; i < dets.Count; i++)
             {
                 if (sup[i]) continue;
@@ -314,30 +382,30 @@ namespace NomadGo.Vision
                 for (int j = i + 1; j < dets.Count; j++)
                 {
                     if (sup[j] || dets[i].classId != dets[j].classId) continue;
-                    Rect a = dets[i].boundingBox, b = dets[j].boundingBox;
+                    Rect  a = dets[i].boundingBox, b = dets[j].boundingBox;
                     float x1 = Mathf.Max(a.xMin, b.xMin), y1 = Mathf.Max(a.yMin, b.yMin);
                     float x2 = Mathf.Min(a.xMax, b.xMax), y2 = Mathf.Min(a.yMax, b.yMax);
-                    float inter = Mathf.Max(0, x2-x1) * Mathf.Max(0, y2-y1);
-                    float uni   = a.width*a.height + b.width*b.height - inter;
-                    if (uni > 0 && inter/uni > nmsThreshold) sup[j] = true;
+                    float inter = Mathf.Max(0, x2 - x1) * Mathf.Max(0, y2 - y1);
+                    float uni   = a.width * a.height + b.width * b.height - inter;
+                    if (uni > 0 && inter / uni > nmsThreshold) sup[j] = true;
                 }
             }
             return kept;
         }
 
+        // —— Demo mode fallback ——
         private static readonly Rect[] _anchors =
         {
-            new Rect(0.10f,0.15f,0.22f,0.28f), new Rect(0.55f,0.15f,0.22f,0.28f),
-            new Rect(0.10f,0.55f,0.22f,0.28f), new Rect(0.55f,0.55f,0.22f,0.28f),
-            new Rect(0.33f,0.35f,0.20f,0.26f),
+            new Rect(0.10f, 0.15f, 0.22f, 0.28f), new Rect(0.55f, 0.15f, 0.22f, 0.28f),
+            new Rect(0.10f, 0.55f, 0.22f, 0.28f), new Rect(0.55f, 0.55f, 0.22f, 0.28f),
+            new Rect(0.33f, 0.35f, 0.20f, 0.26f),
         };
-        // bottle=39, cup=41, bowl=45, apple=47, banana=46
         private static readonly int[] _demoClassIds = { 39, 41, 45, 47, 46 };
 
         private List<DetectionResult> GenerateDemoDetections()
         {
             lastInferenceMs = 2.5f;
-            var res = new List<DetectionResult>();
+            var res  = new List<DetectionResult>();
             int hide = UnityEngine.Random.Range(0, 3);
             var hideSet = new HashSet<int>();
             while (hideSet.Count < hide)
@@ -346,15 +414,15 @@ namespace NomadGo.Vision
             for (int i = 0; i < _anchors.Length; i++)
             {
                 if (hideSet.Contains(i)) continue;
-                Rect a   = _anchors[i]; float j = 0.008f;
-                int  cls = i < _demoClassIds.Length ? _demoClassIds[i] : 39;
+                Rect   a   = _anchors[i]; float j = 0.008f;
+                int    cls = i < _demoClassIds.Length ? _demoClassIds[i] : 39;
                 string lbl = (labels != null && cls < labels.Length) ? labels[cls] : "item";
                 res.Add(new DetectionResult(cls, lbl, 0.78f + UnityEngine.Random.value * 0.18f,
                     new Rect(
-                        Mathf.Clamp01(a.x + (UnityEngine.Random.value-.5f)*j),
-                        Mathf.Clamp01(a.y + (UnityEngine.Random.value-.5f)*j),
-                        Mathf.Clamp(a.width  + (UnityEngine.Random.value-.5f)*j, 0.05f, 0.45f),
-                        Mathf.Clamp(a.height + (UnityEngine.Random.value-.5f)*j, 0.05f, 0.45f))));
+                        Mathf.Clamp01(a.x + (UnityEngine.Random.value - .5f) * j),
+                        Mathf.Clamp01(a.y + (UnityEngine.Random.value - .5f) * j),
+                        Mathf.Clamp(a.width  + (UnityEngine.Random.value - .5f) * j, 0.05f, 0.45f),
+                        Mathf.Clamp(a.height + (UnityEngine.Random.value - .5f) * j, 0.05f, 0.45f))));
             }
             return res;
         }
