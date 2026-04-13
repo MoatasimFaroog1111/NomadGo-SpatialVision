@@ -13,9 +13,13 @@
         android:xlargeScreens="true"
         android:anyDensity="true"/>
 
+    <!-- CAMERA: required for AR scanning -->
     <uses-feature android:name="android.hardware.camera" android:required="true"/>
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
-    <uses-feature android:name="android.hardware.camera.ar" android:required="false"/>
+    <!-- FIX: was android:required="false" (optional) which allows install on non-AR devices
+         but ARCore features won't work. Set to "true" so only ARCore-capable devices
+         can install this app from the Play Store. -->
+    <uses-feature android:name="android.hardware.camera.ar" android:required="true"/>
 
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.INTERNET"/>
@@ -42,6 +46,11 @@
             <meta-data android:name="unityplayer.UnityActivity" android:value="true"/>
         </activity>
 
-        <meta-data android:name="com.google.ar.core" android:value="optional"/>
+        <!-- FIX: was "optional" — changed to "required" to match uses-feature above.
+             "required" means app will only appear on ARCore-supported devices in Play Store.
+             If you want to support non-AR devices too, revert both to "optional"
+             and add simulation-mode fallback logic. -->
+        <meta-data android:name="com.google.ar.core" android:value="required"/>
+
     </application>
 </manifest>
