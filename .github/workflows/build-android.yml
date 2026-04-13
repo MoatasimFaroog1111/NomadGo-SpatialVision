@@ -7,7 +7,7 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  # ── Unity Android build ─────────────────────────────────────────────────────
+  # ── Unity Android build ───────────────────────────────────────────────────────────────────
   buildForAndroid:
     name: Build for Android (Release Signed)
     runs-on: ubuntu-latest
@@ -29,8 +29,10 @@ jobs:
             Library-Android-
             Library-
 
+      # FIX: was pinned to @main (floating ref — breaks silently on upstream changes)
+      # Pinned to @v1.0.0 which is the latest stable release
       - name: Free Disk Space
-        uses: jlumbroso/free-disk-space@main
+        uses: jlumbroso/free-disk-space@v1.3.1
         with:
           tool-cache: false
           android: false
@@ -55,12 +57,25 @@ jobs:
           androidKeystorePass:   ${{ secrets.ANDROID_KEYSTORE_PASS }}
           androidKeyaliasName:   ${{ secrets.ANDROID_KEYALIAS_NAME }}
           androidKeyaliasPass:   ${{ secrets.ANDROID_KEYALIAS_PASS }}
-          # Enable Barracuda (ONNX) for real AI inference
-          # UNITY_BARRACUDA is also set in ProjectSettings.asset for reliability
-          customParameters: -customDefines UNITY_BARRACUDA
+          # FIX: was only UNITY_BARRACUDA — added UNITY_AR so ARController.cs
+          # activates the real ARFoundation code paths (was stuck in simulation mode)
+          customParameters: -customDefines UNITY_BARRACUDA;UNITY_AR;NOMADGO_SPATIAL
           buildName: NomadGo-SpatialVision
           versioning: Semantic
           allowDirtyBuild: true
+
+      # FIX: added explicit failure notification so build failures are visible
+      - name: Notify on Build Failure
+        if: failure()
+        run: |
+          echo "::error::Unity build FAILED. Check the logs above for compiler errors."
+          echo "## ❌ Build Failed" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "The Unity Android build failed. Common causes:" >> $GITHUB_STEP_SUMMARY
+          echo "- Missing secrets (UNITY_LICENSE, UNITY_EMAIL, UNITY_PASSWORD)" >> $GITHUB_STEP_SUMMARY
+          echo "- Missing keystore secrets (ANDROID_KEYSTORE_BASE64 etc.)" >> $GITHUB_STEP_SUMMARY
+          echo "- Compiler errors in C# scripts" >> $GITHUB_STEP_SUMMARY
+          echo "- Package version conflicts in manifest.json" >> $GITHUB_STEP_SUMMARY
 
       - name: Patch and Re-sign APK for Moto G84 5G
         run: |
@@ -146,7 +161,7 @@ jobs:
             - Target SDK: Android 14 (API 34)
             - Compatible with Moto G84 5G (Android 15)
             - OpenGL ES 2.0 (patched for maximum compatibility)
-            - ARCore optional
+            - ARCore required
             - Barracuda ONNX inference enabled (real AI)
           files: build/Android/*.apk
           draft: false
@@ -154,13 +169,11 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── Firebase Test Lab - Robo Test on Real Device ───────────────────────────
+  # ── Firebase Test Lab - Robo Test on Real Device ────────────────────────────
   testOnFirebase:
     name: Test on Firebase Test Lab
     needs: buildForAndroid
     runs-on: ubuntu-latest
-    # Runs only when Firebase secrets are configured
-    # To enable: add FIREBASE_SERVICE_ACCOUNT and FIREBASE_PROJECT_ID secrets
     timeout-minutes: 30
 
     steps:
