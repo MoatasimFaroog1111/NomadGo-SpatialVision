@@ -12,34 +12,50 @@ namespace NomadGo.Spatial
         private TextMeshProUGUI arStatusText;
         private bool arCoreAvailable = false;
 
+        // FIX: cache references — never call FindObjectOfType inside Update()
+        private Vision.FrameProcessor _frameProcessor;
+        private Counting.CountManager _countManager;
+
+        // FIX: use a proper timer instead of unreliable Time.time % 1f
+        private float _statusUpdateTimer = 0f;
+        private const float STATUS_UPDATE_INTERVAL = 1f;
+
         private void Start()
         {
+            // FIX: cache at startup, not every frame
+            _frameProcessor = FindObjectOfType<Vision.FrameProcessor>();
+            _countManager   = FindObjectOfType<Counting.CountManager>();
+
             CheckARCoreAvailability();
             BuildARPanel();
         }
 
         private void CheckARCoreAvailability()
         {
-            // Check if ARFoundation is available (requires ARFoundation package in Unity)
-            // If not, we use simulation mode
             arCoreAvailable = false;
 
-#if AR_FOUNDATION
+// FIX: was #if AR_FOUNDATION — but ProjectSettings defines UNITY_AR, not AR_FOUNDATION
+#if UNITY_AR
             arCoreAvailable = (UnityEngine.XR.ARFoundation.ARSession.state != UnityEngine.XR.ARFoundation.ARSessionState.Unsupported);
             Debug.Log($"[ARController] ARFoundation available. State: {UnityEngine.XR.ARFoundation.ARSession.state}");
 #else
-            Debug.LogWarning("[ARController] ARFoundation not installed. Using simulation mode.");
+            Debug.LogWarning("[ARController] ARFoundation not active (UNITY_AR not defined). Using simulation mode.");
             Debug.LogWarning("[ARController] To enable real AR:");
             Debug.LogWarning("[ARController]   1. In Unity: Window > Package Manager");
             Debug.LogWarning("[ARController]   2. Install 'AR Foundation' and 'ARCore XR Plugin'");
-            Debug.LogWarning("[ARController]   3. Add 'AR_FOUNDATION' to Scripting Define Symbols");
+            Debug.LogWarning("[ARController]   3. Add 'UNITY_AR' to Scripting Define Symbols");
 #endif
         }
 
         private void BuildARPanel()
         {
             var canvasGO = GameObject.Find("UICanvas");
-            if (canvasGO == null) return;
+            // FIX: was silent return — now logs a clear error so the issue is visible
+            if (canvasGO == null)
+            {
+                Debug.LogError("[ARController] UICanvas not found in scene! AR panel will not be created. Make sure a Canvas named 'UICanvas' exists.");
+                return;
+            }
 
             arPanel = new GameObject("ARPanel");
             arPanel.transform.SetParent(canvasGO.transform, false);
@@ -103,7 +119,7 @@ namespace NomadGo.Spatial
 
             if (arCoreAvailable)
             {
-#if AR_FOUNDATION
+#if UNITY_AR
                 var state = UnityEngine.XR.ARFoundation.ARSession.state;
                 arStatusText.text = $"ARCore Status: {state}\n\n" +
                     $"Point camera at flat surfaces to detect planes.\n" +
@@ -113,9 +129,7 @@ namespace NomadGo.Spatial
             }
             else
             {
-                var frameProcessor = FindObjectOfType<Vision.FrameProcessor>();
-                var countManager = FindObjectOfType<Counting.CountManager>();
-
+                // FIX: use cached references instead of FindObjectOfType every call
                 var sb = new System.Text.StringBuilder();
                 sb.AppendLine("MODE: Simulation (no ARCore)");
                 sb.AppendLine();
@@ -126,14 +140,14 @@ namespace NomadGo.Spatial
                 sb.AppendLine("  - Device must support ARCore");
                 sb.AppendLine();
 
-                if (countManager != null)
+                if (_countManager != null)
                 {
                     sb.AppendLine($"Current Scan Data:");
-                    sb.AppendLine($"  Total Items: {countManager.TotalCount}");
-                    sb.AppendLine($"  Rows: {countManager.CurrentClusters?.Count ?? 0}");
-                    if (countManager.CurrentCounts != null)
+                    sb.AppendLine($"  Total Items: {_countManager.TotalCount}");
+                    sb.AppendLine($"  Rows: {_countManager.CurrentClusters?.Count ?? 0}");
+                    if (_countManager.CurrentCounts != null)
                     {
-                        foreach (var kvp in countManager.CurrentCounts)
+                        foreach (var kvp in _countManager.CurrentCounts)
                             sb.AppendLine($"  {kvp.Key}: {kvp.Value}");
                     }
                 }
@@ -148,7 +162,7 @@ namespace NomadGo.Spatial
 
         private int GetDetectedPlaneCount()
         {
-#if AR_FOUNDATION
+#if UNITY_AR
             var planeManager = FindObjectOfType<UnityEngine.XR.ARFoundation.ARPlaneManager>();
             return planeManager != null ? planeManager.trackables.count : 0;
 #else
@@ -159,8 +173,14 @@ namespace NomadGo.Spatial
         private void Update()
         {
             if (!isARActive) return;
-            // Update status every second
-            if (Time.time % 1f < Time.deltaTime) UpdateARStatus();
+
+            // FIX: use a reliable delta-time accumulator instead of Time.time % 1f
+            _statusUpdateTimer += Time.deltaTime;
+            if (_statusUpdateTimer >= STATUS_UPDATE_INTERVAL)
+            {
+                _statusUpdateTimer = 0f;
+                UpdateARStatus();
+            }
         }
     }
 }
