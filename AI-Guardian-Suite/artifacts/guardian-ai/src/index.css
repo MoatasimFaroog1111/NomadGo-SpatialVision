@@ -1,0 +1,469 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-card-border: hsl(var(--card-border));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-popover-border: hsl(var(--popover-border));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+
+  --color-chart-1: hsl(var(--chart-1));
+  --color-chart-2: hsl(var(--chart-2));
+  --color-chart-3: hsl(var(--chart-3));
+  --color-chart-4: hsl(var(--chart-4));
+  --color-chart-5: hsl(var(--chart-5));
+
+  --color-sidebar: hsl(var(--sidebar));
+  --color-sidebar-foreground: hsl(var(--sidebar-foreground));
+  --color-sidebar-border: hsl(var(--sidebar-border));
+  --color-sidebar-primary: hsl(var(--sidebar-primary));
+  --color-sidebar-primary-foreground: hsl(var(--sidebar-primary-foreground));
+  --color-sidebar-accent: hsl(var(--sidebar-accent));
+  --color-sidebar-accent-foreground: hsl(var(--sidebar-accent-foreground));
+  --color-sidebar-ring: hsl(var(--sidebar-ring));
+
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-serif: Georgia, serif;
+  --font-mono: "JetBrains Mono", monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+/* ── Deep AI Space Color System ─────────────────────────────────────── */
+:root {
+  /* Background: ultra-deep space black with blue undertone */
+  --background: 228 30% 4%;
+  --foreground: 210 30% 95%;
+
+  --border: 228 25% 12%;
+  --input: 228 22% 10%;
+  --ring: 186 100% 50%;
+
+  /* Cards: glass-dark */
+  --card: 228 28% 6%;
+  --card-foreground: 210 30% 95%;
+  --card-border: 228 25% 13%;
+
+  --popover: 228 28% 7%;
+  --popover-foreground: 210 30% 95%;
+  --popover-border: 228 25% 14%;
+
+  /* Primary: Electric Cyan */
+  --primary: 186 100% 50%;
+  --primary-foreground: 228 30% 4%;
+
+  /* Secondary: Deep Violet */
+  --secondary: 265 70% 55%;
+  --secondary-foreground: 210 30% 95%;
+
+  --muted: 228 22% 10%;
+  --muted-foreground: 220 15% 55%;
+
+  --accent: 228 22% 12%;
+  --accent-foreground: 210 30% 95%;
+
+  --destructive: 355 90% 60%;
+  --destructive-foreground: 210 30% 95%;
+
+  --success: 142 85% 45%;
+  --success-foreground: 228 30% 4%;
+
+  --warning: 38 95% 55%;
+  --warning-foreground: 228 30% 4%;
+
+  /* Charts */
+  --chart-1: 186 100% 50%;
+  --chart-2: 142 85% 45%;
+  --chart-3: 38 95% 55%;
+  --chart-4: 355 90% 60%;
+  --chart-5: 265 70% 65%;
+
+  /* Sidebar: slightly darker than card */
+  --sidebar: 228 32% 3%;
+  --sidebar-foreground: 210 30% 90%;
+  --sidebar-border: 228 25% 10%;
+  --sidebar-primary: 186 100% 50%;
+  --sidebar-primary-foreground: 228 30% 4%;
+  --sidebar-accent: 228 25% 8%;
+  --sidebar-accent-foreground: 210 30% 95%;
+  --sidebar-ring: 186 100% 50%;
+
+  --radius: 0.625rem;
+
+  /* Glow variables */
+  --glow-cyan:
+    0 0 20px rgba(0, 225, 255, 0.15), 0 0 60px rgba(0, 225, 255, 0.05);
+  --glow-violet:
+    0 0 20px rgba(139, 92, 246, 0.15), 0 0 60px rgba(139, 92, 246, 0.05);
+  --glow-green:
+    0 0 20px rgba(34, 197, 94, 0.15), 0 0 60px rgba(34, 197, 94, 0.05);
+}
+
+/* ── Base Styles ─────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    background-image:
+      radial-gradient(
+        ellipse 80% 50% at 20% -10%,
+        rgba(0, 225, 255, 0.04) 0%,
+        transparent 60%
+      ),
+      radial-gradient(
+        ellipse 60% 50% at 80% 110%,
+        rgba(139, 92, 246, 0.04) 0%,
+        transparent 60%
+      );
+    background-attachment: fixed;
+    min-height: 100dvh;
+  }
+
+  /* Custom scrollbar */
+  ::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: rgba(0, 225, 255, 0.2);
+    border-radius: 999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(0, 225, 255, 0.4);
+  }
+
+  /* Selection */
+  ::selection {
+    background: rgba(0, 225, 255, 0.2);
+    color: #fff;
+  }
+}
+
+/* ── Neural Grid Background ──────────────────────────────────────────── */
+.neural-grid {
+  background-image:
+    linear-gradient(rgba(0, 225, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 225, 255, 0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* ── Glassmorphism Card ──────────────────────────────────────────────── */
+.glass {
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.glass-card {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.04) 0%,
+    rgba(255, 255, 255, 0.01) 100%
+  );
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 225, 255, 0.08);
+  box-shadow:
+    0 4px 24px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: all 0.3s ease;
+}
+
+.glass-card:hover {
+  border-color: rgba(0, 225, 255, 0.15);
+  box-shadow:
+    0 8px 40px rgba(0, 0, 0, 0.4),
+    0 0 20px rgba(0, 225, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  transform: translateY(-1px);
+}
+
+/* ── Glow Effects ────────────────────────────────────────────────────── */
+.glow-cyan {
+  box-shadow: var(--glow-cyan);
+}
+.glow-violet {
+  box-shadow: var(--glow-violet);
+}
+.glow-green {
+  box-shadow: var(--glow-green);
+}
+.glow-text-cyan {
+  text-shadow: 0 0 20px rgba(0, 225, 255, 0.5);
+}
+
+/* ── Gradient Text ───────────────────────────────────────────────────── */
+.gradient-text {
+  background: linear-gradient(135deg, #00e1ff 0%, #a855f7 50%, #06b6d4 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-cyan {
+  background: linear-gradient(135deg, #00e1ff 0%, #38bdf8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.gradient-text-violet {
+  background: linear-gradient(135deg, #a855f7 0%, #818cf8 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+/* ── Gradient Borders ────────────────────────────────────────────────── */
+.gradient-border {
+  position: relative;
+  background-clip: padding-box;
+}
+
+.gradient-border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: linear-gradient(
+    135deg,
+    rgba(0, 225, 255, 0.3),
+    rgba(139, 92, 246, 0.3),
+    rgba(0, 225, 255, 0.1)
+  );
+  -webkit-mask:
+    linear-gradient(#fff 0 0) content-box,
+    linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  pointer-events: none;
+}
+
+/* ── Animated Pulse Dot ──────────────────────────────────────────────── */
+.pulse-dot {
+  position: relative;
+}
+.pulse-dot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.3;
+  animation: pulse-ring 2s ease-in-out infinite;
+}
+
+@keyframes pulse-ring {
+  0%,
+  100% {
+    transform: scale(1);
+    opacity: 0.3;
+  }
+  50% {
+    transform: scale(1.6);
+    opacity: 0;
+  }
+}
+
+/* ── Shimmer Loading ─────────────────────────────────────────────────── */
+.shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0) 0%,
+    rgba(0, 225, 255, 0.04) 50%,
+    rgba(255, 255, 255, 0) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* ── Floating Animation ──────────────────────────────────────────────── */
+@keyframes float {
+  0%,
+  100% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+.float-slow {
+  animation: float 6s ease-in-out infinite;
+}
+.float-medium {
+  animation: float 4s ease-in-out infinite;
+}
+
+/* ── Scan Line ───────────────────────────────────────────────────────── */
+@keyframes scan {
+  0% {
+    transform: translateY(-100%);
+  }
+  100% {
+    transform: translateY(100vh);
+  }
+}
+
+/* ── Neural Dot Matrix ───────────────────────────────────────────────── */
+.dot-matrix {
+  background-image: radial-gradient(
+    circle,
+    rgba(0, 225, 255, 0.15) 1px,
+    transparent 1px
+  );
+  background-size: 24px 24px;
+}
+
+/* ── Status Badge Variants ───────────────────────────────────────────── */
+.status-live {
+  background: rgba(34, 197, 94, 0.1);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  color: #4ade80;
+}
+
+.status-pending {
+  background: rgba(251, 191, 36, 0.1);
+  border: 1px solid rgba(251, 191, 36, 0.3);
+  color: #fbbf24;
+}
+
+.status-error {
+  background: rgba(239, 68, 68, 0.1);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+/* ── Sidebar Active Item Glow ────────────────────────────────────────── */
+.nav-item-active {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 225, 255, 0.12) 0%,
+    rgba(0, 225, 255, 0.04) 100%
+  );
+  border-left: 2px solid #00e1ff;
+  box-shadow: inset 0 0 20px rgba(0, 225, 255, 0.03);
+}
+
+/* ── Metric Card ─────────────────────────────────────────────────────── */
+.metric-card-cyan {
+  background: linear-gradient(
+    135deg,
+    rgba(0, 225, 255, 0.07) 0%,
+    rgba(0, 225, 255, 0.02) 100%
+  );
+  border: 1px solid rgba(0, 225, 255, 0.15);
+}
+.metric-card-violet {
+  background: linear-gradient(
+    135deg,
+    rgba(139, 92, 246, 0.07) 0%,
+    rgba(139, 92, 246, 0.02) 100%
+  );
+  border: 1px solid rgba(139, 92, 246, 0.15);
+}
+.metric-card-green {
+  background: linear-gradient(
+    135deg,
+    rgba(34, 197, 94, 0.07) 0%,
+    rgba(34, 197, 94, 0.02) 100%
+  );
+  border: 1px solid rgba(34, 197, 94, 0.15);
+}
+.metric-card-amber {
+  background: linear-gradient(
+    135deg,
+    rgba(251, 191, 36, 0.07) 0%,
+    rgba(251, 191, 36, 0.02) 100%
+  );
+  border: 1px solid rgba(251, 191, 36, 0.15);
+}
+.metric-card-red {
+  background: linear-gradient(
+    135deg,
+    rgba(239, 68, 68, 0.07) 0%,
+    rgba(239, 68, 68, 0.02) 100%
+  );
+  border: 1px solid rgba(239, 68, 68, 0.15);
+}
+
+/* ── Button Glow ─────────────────────────────────────────────────────── */
+.btn-glow {
+  box-shadow: 0 0 20px rgba(0, 225, 255, 0.2);
+  transition:
+    box-shadow 0.3s ease,
+    transform 0.2s ease;
+}
+.btn-glow:hover {
+  box-shadow: 0 0 30px rgba(0, 225, 255, 0.35);
+  transform: translateY(-1px);
+}
+.btn-glow:active {
+  transform: translateY(0);
+  box-shadow: 0 0 15px rgba(0, 225, 255, 0.2);
+}
+
+/* ── Table Enhancements ──────────────────────────────────────────────── */
+.ai-table tr {
+  border-bottom: 1px solid rgba(0, 225, 255, 0.05);
+  transition: background 0.2s;
+}
+.ai-table tr:hover {
+  background: rgba(0, 225, 255, 0.03);
+}

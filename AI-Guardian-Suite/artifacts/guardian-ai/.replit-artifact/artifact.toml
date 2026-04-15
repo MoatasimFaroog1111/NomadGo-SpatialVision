@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "GuardianAI - AI Accountant"
+version = "1.0.0"
+id = "artifacts/guardian-ai"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24636
+
+[services.development]
+run = "pnpm --filter @workspace/guardian-ai run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/guardian-ai", "run", "build" ]
+publicDir = "artifacts/guardian-ai/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24636"
+BASE_PATH = "/"

@@ -1,0 +1,1083 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: GuardianAI - AI-powered accounting system API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: documents
+    description: Document ingestion and pipeline management
+  - name: pipeline
+    description: Pipeline agent operations
+  - name: approvals
+    description: Human-in-the-loop approval workflows
+  - name: transactions
+    description: Financial transaction management
+  - name: audit
+    description: Audit trail and logging
+  - name: reports
+    description: Financial reporting
+  - name: dashboard
+    description: Dashboard summary endpoints
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  # ── Documents ──────────────────────────────────────────────
+  /documents:
+    get:
+      operationId: listDocuments
+      tags: [documents]
+      summary: List all documents
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum:
+              [
+                pending,
+                preprocessing,
+                extracting,
+                classifying,
+                validating,
+                awaiting_approval,
+                approved,
+                rejected,
+                posted,
+                failed,
+              ]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of documents
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DocumentListResponse"
+    post:
+      operationId: ingestDocument
+      tags: [documents]
+      summary: Ingest a new document
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/IngestDocumentBody"
+      responses:
+        "201":
+          description: Document ingested
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+
+  /documents/{id}:
+    get:
+      operationId: getDocument
+      tags: [documents]
+      summary: Get document by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Document details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+
+  /documents/{id}/pipeline:
+    post:
+      operationId: runDocumentPipeline
+      tags: [documents]
+      summary: Run the full pipeline on a document
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Pipeline result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineResult"
+
+  /documents/{id}/reprocess:
+    post:
+      operationId: reprocessDocument
+      tags: [documents]
+      summary: Reprocess a failed document
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Reprocess triggered
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Document"
+
+  # ── Pipeline agents ────────────────────────────────────────
+  /pipeline/extract/{documentId}:
+    post:
+      operationId: runExtraction
+      tags: [pipeline]
+      summary: Run OCR/extraction agent on a document
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Extraction result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExtractionResult"
+
+  /pipeline/classify/{documentId}:
+    post:
+      operationId: runClassification
+      tags: [pipeline]
+      summary: Run classification agent
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Classification result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ClassificationResult"
+
+  /pipeline/validate/{documentId}:
+    post:
+      operationId: runValidation
+      tags: [pipeline]
+      summary: Run validation agent
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Validation result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ValidationResult"
+
+  /pipeline/post/{documentId}:
+    post:
+      operationId: runPosting
+      tags: [pipeline]
+      summary: Post transaction to accounting system
+      parameters:
+        - name: documentId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Posting result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PostingResult"
+
+  # ── Approvals ─────────────────────────────────────────────
+  /approvals:
+    get:
+      operationId: listApprovals
+      tags: [approvals]
+      summary: List pending approvals
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [pending, approved, rejected]
+      responses:
+        "200":
+          description: List of approval requests
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalListResponse"
+
+  /approvals/{id}/approve:
+    post:
+      operationId: approveTransaction
+      tags: [approvals]
+      summary: Approve a transaction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalActionBody"
+      responses:
+        "200":
+          description: Approval result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRequest"
+
+  /approvals/{id}/reject:
+    post:
+      operationId: rejectTransaction
+      tags: [approvals]
+      summary: Reject a transaction
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ApprovalActionBody"
+      responses:
+        "200":
+          description: Rejection result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ApprovalRequest"
+
+  # ── Transactions ──────────────────────────────────────────
+  /transactions:
+    get:
+      operationId: listTransactions
+      tags: [transactions]
+      summary: List financial transactions
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum:
+              [invoice, receipt, expense, bank_statement, credit_note, other]
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, validated, posted, reconciled, cancelled]
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: List of transactions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TransactionListResponse"
+
+  /transactions/{id}:
+    get:
+      operationId: getTransaction
+      tags: [transactions]
+      summary: Get transaction by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Transaction details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Transaction"
+
+  # ── Audit Trail ───────────────────────────────────────────
+  /audit:
+    get:
+      operationId: listAuditLogs
+      tags: [audit]
+      summary: List audit trail entries
+      parameters:
+        - name: documentId
+          in: query
+          schema:
+            type: integer
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 100
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            default: 0
+      responses:
+        "200":
+          description: Audit log entries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditLogListResponse"
+
+  # ── Reports ───────────────────────────────────────────────
+  /reports/summary:
+    get:
+      operationId: getFinancialSummary
+      tags: [reports]
+      summary: Get financial summary report
+      responses:
+        "200":
+          description: Financial summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FinancialSummary"
+
+  /reports/pipeline-stats:
+    get:
+      operationId: getPipelineStats
+      tags: [reports]
+      summary: Get pipeline processing statistics
+      responses:
+        "200":
+          description: Pipeline statistics
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PipelineStats"
+
+  # ── Dashboard (safe wow endpoints) ────────────────────────
+  /dashboard/overview:
+    get:
+      operationId: getDashboardOverview
+      tags: [dashboard]
+      summary: Get dashboard overview with key metrics
+      responses:
+        "200":
+          description: Dashboard overview
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardOverview"
+
+  /dashboard/recent-activity:
+    get:
+      operationId: getRecentActivity
+      tags: [dashboard]
+      summary: Get recent pipeline activity feed
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        "200":
+          description: Recent activity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ActivityFeed"
+
+  /dashboard/confidence-breakdown:
+    get:
+      operationId: getConfidenceBreakdown
+      tags: [dashboard]
+      summary: Get confidence score distribution
+      responses:
+        "200":
+          description: Confidence breakdown
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ConfidenceBreakdown"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required: [status]
+
+    # ── Document schemas ──────────────────────────────────────
+    Document:
+      type: object
+      properties:
+        id:
+          type: integer
+        fileName:
+          type: string
+        fileType:
+          type: string
+          enum: [pdf, image, email, whatsapp, csv, other]
+        source:
+          type: string
+          enum: [upload, email, whatsapp, api]
+        status:
+          type: string
+          enum:
+            [
+              pending,
+              preprocessing,
+              extracting,
+              classifying,
+              validating,
+              awaiting_approval,
+              approved,
+              rejected,
+              posted,
+              failed,
+            ]
+        fileHash:
+          type: string
+          nullable: true
+        ocrFingerprint:
+          type: string
+          nullable: true
+        isDuplicate:
+          type: boolean
+        duplicateOfId:
+          type: integer
+          nullable: true
+        extractedData:
+          $ref: "#/components/schemas/ExtractedData"
+          nullable: true
+        classificationLabel:
+          type: string
+          nullable: true
+        classificationConfidence:
+          type: number
+          nullable: true
+        validationPassed:
+          type: boolean
+          nullable: true
+        validationErrors:
+          type: array
+          items:
+            type: string
+          nullable: true
+        requiresHumanApproval:
+          type: boolean
+        odooEntryId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - fileName
+        - fileType
+        - source
+        - status
+        - isDuplicate
+        - requiresHumanApproval
+        - createdAt
+        - updatedAt
+
+    ExtractedData:
+      type: object
+      properties:
+        supplier:
+          type: string
+          nullable: true
+        invoiceNumber:
+          type: string
+          nullable: true
+        invoiceDate:
+          type: string
+          nullable: true
+        dueDate:
+          type: string
+          nullable: true
+        currency:
+          type: string
+          nullable: true
+        subtotal:
+          type: number
+          nullable: true
+        taxAmount:
+          type: number
+          nullable: true
+        totalAmount:
+          type: number
+          nullable: true
+        lineItems:
+          type: array
+          items:
+            $ref: "#/components/schemas/LineItem"
+          nullable: true
+        bankAccount:
+          type: string
+          nullable: true
+        rawText:
+          type: string
+          nullable: true
+      required: []
+
+    LineItem:
+      type: object
+      properties:
+        description:
+          type: string
+        quantity:
+          type: number
+          nullable: true
+        unitPrice:
+          type: number
+          nullable: true
+        amount:
+          type: number
+      required: [description, amount]
+
+    IngestDocumentBody:
+      type: object
+      properties:
+        fileName:
+          type: string
+        fileType:
+          type: string
+          enum: [pdf, image, email, whatsapp, csv, other]
+        source:
+          type: string
+          enum: [upload, email, whatsapp, api]
+        rawContent:
+          type: string
+          description: Base64 encoded content or URL
+        metadata:
+          type: object
+          additionalProperties: true
+          nullable: true
+      required: [fileName, fileType, source, rawContent]
+
+    DocumentListResponse:
+      type: object
+      properties:
+        documents:
+          type: array
+          items:
+            $ref: "#/components/schemas/Document"
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+      required: [documents, total, limit, offset]
+
+    PipelineResult:
+      type: object
+      properties:
+        documentId:
+          type: integer
+        stages:
+          type: array
+          items:
+            $ref: "#/components/schemas/PipelineStageResult"
+        finalStatus:
+          type: string
+        requiresApproval:
+          type: boolean
+        processingTimeMs:
+          type: integer
+      required:
+        [documentId, stages, finalStatus, requiresApproval, processingTimeMs]
+
+    PipelineStageResult:
+      type: object
+      properties:
+        stage:
+          type: string
+        success:
+          type: boolean
+        durationMs:
+          type: integer
+        output:
+          type: object
+          additionalProperties: true
+          nullable: true
+        error:
+          type: string
+          nullable: true
+      required: [stage, success, durationMs]
+
+    # ── Agent result schemas ──────────────────────────────────
+    ExtractionResult:
+      type: object
+      properties:
+        documentId:
+          type: integer
+        extractedData:
+          $ref: "#/components/schemas/ExtractedData"
+        confidence:
+          type: number
+        rawText:
+          type: string
+        processingTimeMs:
+          type: integer
+      required:
+        [documentId, extractedData, confidence, rawText, processingTimeMs]
+
+    ClassificationResult:
+      type: object
+      properties:
+        documentId:
+          type: integer
+        label:
+          type: string
+          enum: [invoice, receipt, expense, bank_statement, credit_note, other]
+        confidence:
+          type: number
+        reasoning:
+          type: string
+      required: [documentId, label, confidence, reasoning]
+
+    ValidationResult:
+      type: object
+      properties:
+        documentId:
+          type: integer
+        passed:
+          type: boolean
+        errors:
+          type: array
+          items:
+            type: string
+        warnings:
+          type: array
+          items:
+            type: string
+        requiresHumanApproval:
+          type: boolean
+        confidenceScore:
+          type: number
+      required:
+        [
+          documentId,
+          passed,
+          errors,
+          warnings,
+          requiresHumanApproval,
+          confidenceScore,
+        ]
+
+    PostingResult:
+      type: object
+      properties:
+        documentId:
+          type: integer
+        success:
+          type: boolean
+        odooEntryId:
+          type: string
+          nullable: true
+        error:
+          type: string
+          nullable: true
+        postedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [documentId, success]
+
+    # ── Approval schemas ──────────────────────────────────────
+    ApprovalRequest:
+      type: object
+      properties:
+        id:
+          type: integer
+        documentId:
+          type: integer
+        reason:
+          type: string
+        status:
+          type: string
+          enum: [pending, approved, rejected]
+        reviewerNote:
+          type: string
+          nullable: true
+        reviewedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        document:
+          $ref: "#/components/schemas/Document"
+          nullable: true
+      required: [id, documentId, reason, status, createdAt]
+
+    ApprovalListResponse:
+      type: object
+      properties:
+        approvals:
+          type: array
+          items:
+            $ref: "#/components/schemas/ApprovalRequest"
+        total:
+          type: integer
+      required: [approvals, total]
+
+    ApprovalActionBody:
+      type: object
+      properties:
+        note:
+          type: string
+          nullable: true
+      required: []
+
+    # ── Transaction schemas ───────────────────────────────────
+    Transaction:
+      type: object
+      properties:
+        id:
+          type: integer
+        documentId:
+          type: integer
+          nullable: true
+        type:
+          type: string
+          enum: [invoice, receipt, expense, bank_statement, credit_note, other]
+        status:
+          type: string
+          enum: [draft, validated, posted, reconciled, cancelled]
+        supplier:
+          type: string
+          nullable: true
+        invoiceNumber:
+          type: string
+          nullable: true
+        invoiceDate:
+          type: string
+          nullable: true
+        currency:
+          type: string
+        totalAmount:
+          type: number
+        taxAmount:
+          type: number
+          nullable: true
+        odooEntryId:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - type
+        - status
+        - currency
+        - totalAmount
+        - createdAt
+        - updatedAt
+
+    TransactionListResponse:
+      type: object
+      properties:
+        transactions:
+          type: array
+          items:
+            $ref: "#/components/schemas/Transaction"
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+      required: [transactions, total, limit, offset]
+
+    # ── Audit schemas ─────────────────────────────────────────
+    AuditLog:
+      type: object
+      properties:
+        id:
+          type: integer
+        documentId:
+          type: integer
+          nullable: true
+        transactionId:
+          type: integer
+          nullable: true
+        agentName:
+          type: string
+        action:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
+          nullable: true
+        severity:
+          type: string
+          enum: [info, warning, error, critical]
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, agentName, action, severity, createdAt]
+
+    AuditLogListResponse:
+      type: object
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: "#/components/schemas/AuditLog"
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+      required: [logs, total, limit, offset]
+
+    # ── Report schemas ────────────────────────────────────────
+    FinancialSummary:
+      type: object
+      properties:
+        totalInvoices:
+          type: integer
+        totalAmount:
+          type: number
+        totalTax:
+          type: number
+        byType:
+          type: array
+          items:
+            type: object
+            properties:
+              type:
+                type: string
+              count:
+                type: integer
+              amount:
+                type: number
+            required: [type, count, amount]
+        byStatus:
+          type: array
+          items:
+            type: object
+            properties:
+              status:
+                type: string
+              count:
+                type: integer
+            required: [status, count]
+        topSuppliers:
+          type: array
+          items:
+            type: object
+            properties:
+              supplier:
+                type: string
+              count:
+                type: integer
+              totalAmount:
+                type: number
+            required: [supplier, count, totalAmount]
+      required:
+        [totalInvoices, totalAmount, totalTax, byType, byStatus, topSuppliers]
+
+    PipelineStats:
+      type: object
+      properties:
+        totalProcessed:
+          type: integer
+        successRate:
+          type: number
+        averageProcessingTimeMs:
+          type: integer
+        pendingApprovals:
+          type: integer
+        duplicatesDetected:
+          type: integer
+        failedDocuments:
+          type: integer
+        stageBreakdown:
+          type: array
+          items:
+            type: object
+            properties:
+              stage:
+                type: string
+              count:
+                type: integer
+              avgDurationMs:
+                type: integer
+            required: [stage, count, avgDurationMs]
+      required:
+        - totalProcessed
+        - successRate
+        - averageProcessingTimeMs
+        - pendingApprovals
+        - duplicatesDetected
+        - failedDocuments
+        - stageBreakdown
+
+    # ── Dashboard schemas ─────────────────────────────────────
+    DashboardOverview:
+      type: object
+      properties:
+        documentsToday:
+          type: integer
+        pendingApprovals:
+          type: integer
+        autoPostedToday:
+          type: integer
+        failedToday:
+          type: integer
+        totalPostedThisMonth:
+          type: number
+        avgConfidenceScore:
+          type: number
+        duplicatesBlocked:
+          type: integer
+        pipelineHealth:
+          type: string
+          enum: [healthy, degraded, critical]
+      required:
+        - documentsToday
+        - pendingApprovals
+        - autoPostedToday
+        - failedToday
+        - totalPostedThisMonth
+        - avgConfidenceScore
+        - duplicatesBlocked
+        - pipelineHealth
+
+    ActivityFeed:
+      type: object
+      properties:
+        activities:
+          type: array
+          items:
+            $ref: "#/components/schemas/ActivityItem"
+      required: [activities]
+
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum:
+            [
+              document_ingested,
+              extraction_complete,
+              classification_complete,
+              validation_failed,
+              approval_required,
+              approved,
+              rejected,
+              posted,
+              duplicate_detected,
+              error,
+            ]
+        documentId:
+          type: integer
+          nullable: true
+        documentName:
+          type: string
+          nullable: true
+        message:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        severity:
+          type: string
+          enum: [info, warning, error]
+      required: [id, type, message, timestamp, severity]
+
+    ConfidenceBreakdown:
+      type: object
+      properties:
+        high:
+          type: integer
+          description: Documents with confidence >= 0.85
+        medium:
+          type: integer
+          description: Documents with confidence 0.60 - 0.84
+        low:
+          type: integer
+          description: Documents with confidence < 0.60
+        averageScore:
+          type: number
+        thresholdForAutoPost:
+          type: number
+      required: [high, medium, low, averageScore, thresholdForAutoPost]
