@@ -7,14 +7,6 @@ using UnityEngine.Networking;
 
 namespace NomadGo.Sync
 {
-    /// <summary>
-    /// Manages periodic state snapshots ("pulses").
-    ///
-    /// local_mode = true  → writes JSON files directly to device storage.
-    ///                       No internet connection required. Zero data loss.
-    /// local_mode = false → sends pulses to a remote HTTP endpoint
-    ///                       with exponential-backoff retry.
-    /// </summary>
     public class SyncPulseManager : MonoBehaviour
     {
         // Injected by AppManager
@@ -44,8 +36,6 @@ namespace NomadGo.Sync
         public int TotalFailed     => totalFailed;
         public int PendingCount    => pulseQueue != null ? pulseQueue.Count : 0;
         public bool IsLocalMode    => localMode;
-
-        // ── Initialization ─────────────────────────────────────────────────
 
         public void Initialize(AppShell.SyncConfig config)
         {
@@ -86,8 +76,6 @@ namespace NomadGo.Sync
             sessionStorage = ss;
         }
 
-        // ── Lifecycle ──────────────────────────────────────────────────────
-
         public void StartPulsing()
         {
             if (isPulsing) return;
@@ -107,8 +95,6 @@ namespace NomadGo.Sync
             Debug.Log($"[SyncPulse] Stopped. Written={totalWritten}, Failed={totalFailed}");
         }
 
-        // ── Pulse loop ─────────────────────────────────────────────────────
-
         private IEnumerator PulseLoop()
         {
             while (isPulsing)
@@ -124,8 +110,6 @@ namespace NomadGo.Sync
                     yield return SendRemote(pulse);
             }
         }
-
-        // ── Local mode ─────────────────────────────────────────────────────
 
         private void WriteLocal(PulseData pulse)
         {
@@ -149,10 +133,6 @@ namespace NomadGo.Sync
             }
         }
 
-        /// <summary>
-        /// Maintains a lightweight index file so the UI/reports can quickly
-        /// list all sessions without reading every pulse file.
-        /// </summary>
         private void UpdateLocalIndex(PulseData pulse)
         {
             string indexPath = Path.Combine(localStoragePath, "index.json");
@@ -197,8 +177,6 @@ namespace NomadGo.Sync
 
             File.WriteAllText(indexPath, JsonUtility.ToJson(index, true));
         }
-
-        // ── Remote mode ────────────────────────────────────────────────────
 
         private IEnumerator SendRemote(PulseData pulse)
         {
@@ -270,8 +248,6 @@ namespace NomadGo.Sync
             }
         }
 
-        // ── Helpers ────────────────────────────────────────────────────────
-
         private PulseData BuildPulse()
         {
             if (countManager == null || sessionStorage == null) return null;
@@ -294,9 +270,6 @@ namespace NomadGo.Sync
             return pulse;
         }
 
-        // ── Local index read (for Reports UI) ──────────────────────────────
-
-        /// <summary>Returns the local pulse index. Returns null if remote mode.</summary>
         public LocalPulseIndex GetLocalIndex()
         {
             if (!localMode) return null;
@@ -308,7 +281,6 @@ namespace NomadGo.Sync
             catch { return new LocalPulseIndex(); }
         }
 
-        /// <summary>Returns all pulse files for a session as a list.</summary>
         public List<PulseData> GetLocalPulses(string sessionId)
         {
             var list = new List<PulseData>();
@@ -334,8 +306,6 @@ namespace NomadGo.Sync
                 networkMonitor.OnNetworkStatusChanged -= OnNetworkStatusChanged;
         }
     }
-
-    // ── Data models for local index ─────────────────────────────────────────
 
     [Serializable]
     public class LocalPulseIndex

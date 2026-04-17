@@ -2,10 +2,6 @@ using UnityEngine;
 
 namespace NomadGo.AppShell
 {
-    /// <summary>
-    /// Central app lifecycle manager. Owns all subsystem references and
-    /// provides them to other scripts — eliminates FindObjectOfType calls.
-    /// </summary>
     public class AppManager : MonoBehaviour
     {
         public static AppManager Instance { get; private set; }

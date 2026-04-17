@@ -32,9 +32,7 @@ namespace NomadGo.AppShell
         public float confidence_threshold;
         public float nms_threshold;
         public int max_detections;
-        /// <summary>URL to a remote manifest JSON. Empty = use bundled model.</summary>
         public string remote_url;
-        /// <summary>Version string of the currently bundled / cached model.</summary>
         public string model_version;
     }
 
@@ -59,10 +57,6 @@ namespace NomadGo.AppShell
     [Serializable]
     public class SyncConfig
     {
-        /// <summary>
-        /// true  → write pulses to device storage (no network required).
-        /// false → send pulses to base_url via HTTP POST.
-        /// </summary>
         public bool local_mode;
         public string local_storage_path;   // used when local_mode = true
         public string base_url;             // used when local_mode = false

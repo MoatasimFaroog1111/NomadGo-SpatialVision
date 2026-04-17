@@ -4,11 +4,6 @@ using UnityEngine.UI;
 
 namespace NomadGo.AppShell
 {
-    /// <summary>
-    /// Displays the device back-camera as a full-screen background using
-    /// a Screen-Space Overlay Canvas (sorting order -100), so all UI renders on top.
-    /// Uses RawImage — no GL shader dependency, correct orientation via RectTransform.
-    /// </summary>
     public class CameraFix : MonoBehaviour
     {
         private WebCamTexture webCamTexture;
@@ -21,13 +16,10 @@ namespace NomadGo.AppShell
 
         private void Awake()
         {
-            // FIRST: force skybox material to null and render settings to safe values
             RenderSettings.skybox = null;
             RenderSettings.ambientMode = UnityEngine.Rendering.AmbientMode.Flat;
             RenderSettings.ambientLight = Color.black;
 
-            // Disable all AR Foundation components — we use WebCamTexture, not ARCore.
-            // ARCameraBackground / ARCameraManager left enabled cause magenta on AR-init failure.
             string[] arTypes = { "ARCameraBackground", "ARCameraManager",
                                   "ARSession", "ARSessionOrigin",
                                   "ARInputManager", "ARPlaneManager",
@@ -65,10 +57,6 @@ namespace NomadGo.AppShell
             StartCoroutine(StartCamera());
         }
 
-        /// <summary>
-        /// Continuously enforce camera clear flags every frame to prevent
-        /// any late-initializing component from switching back to Skybox.
-        /// </summary>
         private void LateUpdate()
         {
             foreach (var cam in Camera.allCameras)
@@ -110,8 +98,7 @@ namespace NomadGo.AppShell
             blackTex.SetPixels(pixels);
             blackTex.Apply();
             rawImage.texture = blackTex;
-            rawImage.color   = Color.white;  // white tint on black texture = shows black
-        }
+            rawImage.color   = Color.white;        }
 
         private IEnumerator StartCamera()
         {
@@ -138,12 +125,10 @@ namespace NomadGo.AppShell
             {
                 diagText = "No camera found on device.";
                 Debug.LogError("[CameraFix] No camera device found.");
-                // Keep the black placeholder — no pink screen
                 yield break;
             }
 
             diagText = "Opening camera...";
-            // Request 1280×720 but Android may give a different resolution — we read back actual
             webCamTexture = new WebCamTexture(camName, 1280, 720, 30);
             webCamTexture.Play();
 
@@ -155,18 +140,15 @@ namespace NomadGo.AppShell
                 {
                     diagText = "Camera timed out. Check permissions.";
                     Debug.LogError("[CameraFix] Camera startup timed out.");
-                    // Keep the black placeholder — no pink screen
                     yield break;
                 }
                 yield return null;
             }
-            // Extra wait: let videoRotationAngle stabilise (some devices update it late)
             yield return new WaitForSeconds(1.0f);
 
             int  rotAngle = webCamTexture.videoRotationAngle;
             bool mirrored = webCamTexture.videoVerticallyMirrored;
 
-            // Read ACTUAL resolution Android gave us (may differ from requested 1280×720)
             int scrW = Screen.width;
             int scrH = Screen.height;
             int camW = webCamTexture.width;
@@ -174,8 +156,6 @@ namespace NomadGo.AppShell
 
             Debug.Log($"[CameraFix] Camera actual res={camW}x{camH} rot={rotAngle} mirror={mirrored} screen={scrW}x{scrH}");
 
-            // Compute scale so the (possibly rotated) camera fills the screen (ScaleAndCrop).
-            // After a 90/270° rotation the camera's width maps to screen height and vice-versa.
             float scale;
             if (rotAngle == 90 || rotAngle == 270)
                 scale = Mathf.Max((float)scrW / camH, (float)scrH / camW);
@@ -186,11 +166,8 @@ namespace NomadGo.AppShell
             rawImage.color   = Color.white;
 
             var rt2 = rawImage.rectTransform;
-            // sizeDelta in local (pre-rotation) space; after rotation it fills the screen
             rt2.sizeDelta        = new Vector2(camW * scale, camH * scale);
-            // Rotate to correct orientation  (Unity +z = CCW, so -rotAngle = clockwise correction)
             rt2.localEulerAngles = new Vector3(0f, 0f, -rotAngle);
-            // Mirror only if needed (front cameras)
             rt2.localScale       = new Vector3(mirrored ? -1f : 1f, 1f, 1f);
 
             cameraReady = true;
@@ -200,7 +177,6 @@ namespace NomadGo.AppShell
                       $"rect={camW * scale:F0}x{camH * scale:F0}");
         }
 
-        // Show a status message only while the camera is starting up
         private void OnGUI()
         {
             if (cameraReady || string.IsNullOrEmpty(diagText)) return;

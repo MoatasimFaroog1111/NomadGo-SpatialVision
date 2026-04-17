@@ -68,7 +68,6 @@ namespace NomadGo.Vision
             Debug.Log("[FrameProcessor] Processing started.");
         }
 
-        /// <summary>Optional: inject CameraFix directly to avoid scene search.</summary>
         public void InjectCameraFix(AppShell.CameraFix fix) => cameraFix = fix;
 
         public void StopProcessing()

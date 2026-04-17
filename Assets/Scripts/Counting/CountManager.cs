@@ -36,7 +36,6 @@ namespace NomadGo.Counting
             Debug.Log("[CountManager] Initialized.");
         }
 
-        /// <summary>Called by AppManager after all subsystems are ready.</summary>
         public void InjectFrameProcessor(FrameProcessor fp)
         {
             if (frameProcessor != null)

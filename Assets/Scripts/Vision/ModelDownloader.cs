@@ -6,21 +6,6 @@ using UnityEngine.Networking;
 
 namespace NomadGo.Vision
 {
-    /// <summary>
-    /// Downloads a YOLO model + labels from a remote server and caches them in
-    /// Application.persistentDataPath/Models/.
-    ///
-    /// Manifest JSON format expected at remote_url:
-    /// {
-    ///   "version":   "1.0.1",
-    ///   "model_url": "https://example.com/model.onnx",
-    ///   "labels_url":"https://example.com/labels.txt",
-    ///   "model_size_mb": 6.2
-    /// }
-    ///
-    /// Backward-compatible: if remote_url is empty the system is dormant and
-    /// the bundled StreamingAssets model is used as before.
-    /// </summary>
     public class ModelDownloader : MonoBehaviour
     {
         // ---------------------------------------------------------------
@@ -48,16 +33,13 @@ namespace NomadGo.Vision
         public bool   UpdateAvailable  => updateAvailable;
         public string PendingVersion   => pendingVersion;
 
-        /// <summary>True if a valid cached model file exists on disk.</summary>
         public bool HasCachedModel =>
             !string.IsNullOrEmpty(PlayerPrefs.GetString(PREFS_CACHED_MODEL, "")) &&
             File.Exists(PlayerPrefs.GetString(PREFS_CACHED_MODEL, ""));
 
-        /// <summary>Full path to the cached .onnx file, or empty string.</summary>
         public string CachedModelPath =>
             HasCachedModel ? PlayerPrefs.GetString(PREFS_CACHED_MODEL, "") : "";
 
-        /// <summary>Full path to the cached labels .txt file, or empty string.</summary>
         public string CachedLabelsPath
         {
             get
@@ -67,7 +49,6 @@ namespace NomadGo.Vision
             }
         }
 
-        /// <summary>Version string stored in PlayerPrefs for the cached model.</summary>
         public string CachedVersion => PlayerPrefs.GetString(PREFS_CACHED_VERSION, "");
 
         // Callbacks (set by AppManager / UIBuilder)
@@ -79,9 +60,6 @@ namespace NomadGo.Vision
         // Initialisation
         // ---------------------------------------------------------------
 
-        /// <summary>
-        /// Called by AppManager after config is loaded.
-        /// </summary>
         public void Initialize(AppShell.ModelConfig config)
         {
             remoteUrl      = config.remote_url      ?? "";
@@ -111,10 +89,6 @@ namespace NomadGo.Vision
         // Public API
         // ---------------------------------------------------------------
 
-        /// <summary>
-        /// Manually trigger an update check.
-        /// callback(true) = update available, callback(false) = already up-to-date.
-        /// </summary>
         public void CheckForUpdate(Action<bool> callback)
         {
             if (string.IsNullOrEmpty(remoteUrl))
@@ -125,10 +99,6 @@ namespace NomadGo.Vision
             StartCoroutine(CheckForUpdateInternal(callback));
         }
 
-        /// <summary>
-        /// Download the model (and labels). Reports progress via progressCallback (0..1)
-        /// and completion via completeCallback(success).
-        /// </summary>
         public void DownloadModel(Action<float> progressCallback, Action<bool> completeCallback)
         {
             if (string.IsNullOrEmpty(remoteUrl))
@@ -215,7 +185,6 @@ namespace NomadGo.Vision
 
         private IEnumerator DownloadModelInternal(Action<float> progressCallback, Action<bool> completeCallback)
         {
-            // ── 1. Fetch manifest ──────────────────────────────────────
             Debug.Log($"[ModelDownloader] Fetching manifest from {remoteUrl}");
             isDownloading = true;
             progress      = 0f;
@@ -268,7 +237,6 @@ namespace NomadGo.Vision
                 yield break;
             }
 
-            // ── 2. Prepare cache directory ─────────────────────────────
             string cacheDir = Path.Combine(Application.persistentDataPath, "Models");
             try { Directory.CreateDirectory(cacheDir); }
             catch (Exception ex)
@@ -283,7 +251,6 @@ namespace NomadGo.Vision
             string modelDest  = Path.Combine(cacheDir, "cached_model.onnx");
             string labelsDest = Path.Combine(cacheDir, "cached_labels.txt");
 
-            // ── 3. Download model .onnx ────────────────────────────────
             Debug.Log($"[ModelDownloader] Downloading model from {manifest.model_url}  (~{manifest.model_size_mb:F1} MB)");
 
             yield return DownloadFile(manifest.model_url, modelDest,
@@ -298,7 +265,6 @@ namespace NomadGo.Vision
                 yield break;
             }
 
-            // ── 4. Download labels .txt ────────────────────────────────
             if (!string.IsNullOrEmpty(manifest.labels_url))
             {
                 Debug.Log($"[ModelDownloader] Downloading labels from {manifest.labels_url}");
@@ -310,7 +276,6 @@ namespace NomadGo.Vision
                 Debug.Log("[ModelDownloader] No labels_url in manifest — skipping labels download.");
             }
 
-            // ── 5. Persist paths & version ─────────────────────────────
             PlayerPrefs.SetString(PREFS_CACHED_VERSION, manifest.version);
             PlayerPrefs.SetString(PREFS_CACHED_MODEL,   modelDest);
             PlayerPrefs.SetString(PREFS_CACHED_LABELS,  File.Exists(labelsDest) ? labelsDest : "");
@@ -375,11 +340,6 @@ namespace NomadGo.Vision
             OnProgress?.Invoke(progress);
         }
 
-        /// <summary>
-        /// Simple semver-style comparison (major.minor.patch).
-        /// Returns >0 if a > b, 0 if equal, <0 if a < b.
-        /// Falls back to string comparison for non-numeric tokens.
-        /// </summary>
         private static int CompareVersions(string a, string b)
         {
             if (string.IsNullOrEmpty(a) && string.IsNullOrEmpty(b)) return 0;
@@ -399,9 +359,6 @@ namespace NomadGo.Vision
             return 0;
         }
 
-        /// <summary>
-        /// Clears the cached model from PlayerPrefs and disk (for testing / reset).
-        /// </summary>
         public void ClearCache()
         {
             string modelPath  = PlayerPrefs.GetString(PREFS_CACHED_MODEL, "");

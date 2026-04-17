@@ -30,7 +30,6 @@ namespace NomadGo.Storage
             Debug.Log($"[SessionStorage] Initialized. Autosave: {autosaveInterval}s");
         }
 
-        /// <summary>Called by AppManager after all subsystems are ready.</summary>
         public void InjectReferences(Counting.CountManager cm, Vision.FrameProcessor fp)
         {
             countManager   = cm;
