@@ -5,7 +5,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import { Layout } from "@/components/layout";
 
-// Pages
 import Dashboard from "@/pages/dashboard";
 import Documents from "@/pages/documents";
 import DocumentDetail from "@/pages/document-detail";
@@ -19,6 +18,7 @@ import ChatPage from "@/pages/chat";
 import SettingsPage from "@/pages/settings";
 import AutonomousPage from "@/pages/autonomous";
 import ChannelsPage from "@/pages/channels";
+import PredictPage from "@/pages/predict";
 
 const queryClient = new QueryClient();
 
@@ -39,6 +39,7 @@ function Router() {
         <Route path="/settings" component={SettingsPage} />
         <Route path="/autonomous" component={AutonomousPage} />
         <Route path="/channels" component={ChannelsPage} />
+        <Route path="/predict" component={PredictPage} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

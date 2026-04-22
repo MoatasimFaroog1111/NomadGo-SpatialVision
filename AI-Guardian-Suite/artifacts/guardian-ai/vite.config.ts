@@ -36,6 +36,11 @@ export default defineConfig({
         target: `http://localhost:${apiPort}`,
         changeOrigin: true,
       },
+      "/ml": {
+        target: "http://localhost:5000",
+        changeOrigin: true,
+        rewrite: (path: string) => path.replace(/^\/ml/, ""),
+      },
     },
     fs: {
       strict: true,

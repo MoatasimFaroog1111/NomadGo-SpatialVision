@@ -66,6 +66,13 @@ const navGroups = [
     label: "الذكاء الاصطناعي",
     items: [
       { href: "/memory", label: "ذاكرة AI", icon: Brain },
+      {
+        href: "/predict",
+        label: "التنبؤ المحاسبي",
+        icon: Activity,
+        badge: "ML",
+        badgeColor: "green",
+      },
       { href: "/settings", label: "إعدادات AI", icon: Settings },
     ],
   },
