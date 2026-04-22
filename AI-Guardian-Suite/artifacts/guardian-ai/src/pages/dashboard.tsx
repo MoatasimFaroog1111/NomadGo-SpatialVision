@@ -371,7 +371,7 @@ export default function Dashboard() {
               </p>
               <p className="text-xl font-bold text-white">
                 SAR{" "}
-                {overview.totalPostedThisMonth.toLocaleString("en-SA", {
+                {(overview.totalPostedThisMonth ?? 0).toLocaleString("en-SA", {
                   minimumFractionDigits: 0,
                 })}
               </p>

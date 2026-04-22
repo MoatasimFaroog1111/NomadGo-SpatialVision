@@ -17,6 +17,7 @@ import {
   MessageCircle,
   Activity,
   ChevronRight,
+  Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
@@ -33,7 +34,7 @@ const navGroups = [
         label: "Autonomous OS",
         icon: Bot,
         badge: "AI",
-        badgeColor: "cyan",
+        badgeColor: "blue",
       },
       {
         href: "/channels",
@@ -71,7 +72,7 @@ const navGroups = [
 ];
 
 const PROVIDER_ICONS = {
-  openai: { Icon: Zap, label: "OpenAI GPT", color: "text-emerald-400" },
+  openai: { Icon: Zap, label: "OpenAI GPT", color: "text-blue-400" },
   anthropic: { Icon: Cpu, label: "Claude AI", color: "text-violet-400" },
   custom: { Icon: Server, label: "Custom LLM", color: "text-sky-400" },
 } as const;
@@ -91,14 +92,13 @@ function LlmBadge() {
     retry: 1,
   });
 
-  const provider = (data?.activeProvider ??
-    "openai") as keyof typeof PROVIDER_ICONS;
+  const provider = (data?.activeProvider ?? "openai") as keyof typeof PROVIDER_ICONS;
   const meta = PROVIDER_ICONS[provider] ?? PROVIDER_ICONS.openai;
   const { Icon } = meta;
 
   return (
     <Link href="/settings">
-      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-white/5 border border-white/8 hover:border-cyan-500/30 transition-all cursor-pointer group">
+      <div className="flex items-center gap-1.5 px-2 py-1 rounded-md bg-blue-500/10 border border-blue-500/20 hover:border-blue-400/40 transition-all cursor-pointer group">
         <Icon className={cn("w-3 h-3", meta.color)} />
         <span className={cn("text-[10px] font-medium", meta.color)}>
           {provider === "custom" ? (data?.customName ?? "Custom") : meta.label}
@@ -135,14 +135,9 @@ function OdooStatus() {
 
   if (data?.connected) {
     return (
-      <div
-        className="flex items-center gap-1.5"
-        title={`${data.company} · UID ${data.uid}`}
-      >
+      <div className="flex items-center gap-1.5" title={`${data.company} · UID ${data.uid}`}>
         <div className="w-1.5 h-1.5 rounded-full bg-emerald-400 relative pulse-dot" />
-        <span className="text-[10px] text-emerald-400 font-medium">
-          Odoo Live
-        </span>
+        <span className="text-[10px] text-emerald-400 font-medium">Odoo Live</span>
       </div>
     );
   }
@@ -159,54 +154,76 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
 
   return (
-    <div className="flex min-h-[100dvh] w-full bg-background">
+    <div className="flex min-h-[100dvh] w-full" style={{ background: "linear-gradient(135deg, #0A1628 0%, #0D1E35 50%, #0A1628 100%)" }}>
       {/* ── Sidebar ─────────────────────────────────────────────────── */}
-      <aside className="w-[240px] hidden md:flex flex-col border-r border-white/[0.06] bg-sidebar relative overflow-hidden shrink-0">
-        {/* Subtle background glow orbs */}
-        <div className="absolute top-0 left-0 w-48 h-48 bg-cyan-500/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 right-0 w-48 h-48 bg-violet-500/5 rounded-full blur-3xl pointer-events-none" />
+      <aside
+        className="w-[240px] hidden md:flex flex-col shrink-0 relative overflow-hidden"
+        style={{
+          background: "linear-gradient(180deg, rgba(10,22,40,0.98) 0%, rgba(8,18,34,1) 100%)",
+          borderRight: "1px solid rgba(33,150,243,0.12)",
+          boxShadow: "4px 0 24px rgba(0,0,0,0.4)",
+        }}
+      >
+        {/* Background glow orbs */}
+        <div className="absolute top-0 left-0 w-48 h-48 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(33,150,243,0.06)" }} />
+        <div className="absolute bottom-0 right-0 w-48 h-48 rounded-full blur-3xl pointer-events-none" style={{ background: "rgba(139,92,246,0.04)" }} />
 
         {/* Logo */}
-        <div className="h-16 flex items-center px-4 border-b border-white/[0.05] gap-3 shrink-0 relative">
+        <div
+          className="h-16 flex items-center px-4 gap-3 shrink-0 relative"
+          style={{ borderBottom: "1px solid rgba(33,150,243,0.1)" }}
+        >
           <div className="relative">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-cyan-400/20 to-violet-500/20 flex items-center justify-center border border-cyan-400/20 overflow-hidden">
-              <img
-                src={gitcLogo}
-                alt="GITC"
-                className="w-7 h-7 object-contain"
-              />
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center overflow-hidden"
+              style={{
+                background: "linear-gradient(135deg, rgba(33,150,243,0.2) 0%, rgba(139,92,246,0.15) 100%)",
+                border: "1px solid rgba(33,150,243,0.3)",
+                boxShadow: "0 0 12px rgba(33,150,243,0.2)",
+              }}
+            >
+              <img src={gitcLogo} alt="GITC" className="w-7 h-7 object-contain" />
             </div>
-            <div className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 bg-emerald-400 rounded-full border-2 border-sidebar" />
+            <div
+              className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full"
+              style={{
+                background: "#4ade80",
+                border: "2px solid #0A1628",
+                boxShadow: "0 0 6px rgba(74,222,128,0.6)",
+              }}
+            />
           </div>
           <div className="flex flex-col min-w-0">
-            <span className="font-bold text-sm text-white tracking-tight leading-tight">
+            <span className="font-bold text-sm tracking-tight leading-tight" style={{ color: "#E8F0FE" }}>
               GuardianAI
             </span>
-            <span className="text-[9px] text-cyan-400/70 tracking-widest uppercase font-medium">
+            <span className="text-[9px] tracking-widest uppercase font-medium" style={{ color: "rgba(33,150,243,0.7)" }}>
               GITC International
             </span>
           </div>
+          <Shield className="w-4 h-4 ml-auto shrink-0" style={{ color: "rgba(33,150,243,0.4)" }} />
         </div>
 
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-5">
           {navGroups.map((group) => {
             const hasActive = group.items.some((item) =>
-              item.href === "/"
-                ? location === "/"
-                : location.startsWith(item.href),
+              item.href === "/" ? location === "/" : location.startsWith(item.href),
             );
             return (
               <div key={group.label}>
                 <div className="px-3 mb-1.5 flex items-center gap-2">
-                  <span className="text-[9px] font-bold tracking-widest uppercase text-white/25 select-none">
+                  <span className="text-[9px] font-bold tracking-widest uppercase select-none" style={{ color: "rgba(144,202,249,0.3)" }}>
                     {group.label}
                   </span>
-                  {hasActive ? (
-                    <div className="h-px flex-1 bg-gradient-to-r from-cyan-500/30 to-transparent" />
-                  ) : (
-                    <div className="h-px flex-1 bg-white/5" />
-                  )}
+                  <div
+                    className="h-px flex-1"
+                    style={{
+                      background: hasActive
+                        ? "linear-gradient(90deg, rgba(33,150,243,0.4) 0%, transparent 100%)"
+                        : "rgba(255,255,255,0.05)",
+                    }}
+                  />
                 </div>
                 <div className="space-y-0.5">
                   {group.items.map((item) => {
@@ -217,39 +234,49 @@ export function Layout({ children }: { children: React.ReactNode }) {
                     return (
                       <Link key={item.href} href={item.href}>
                         <div
-                          className={cn(
-                            "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer group relative",
+                          className="flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-all duration-200 cursor-pointer group relative"
+                          style={
                             isActive
-                              ? "nav-item-active text-cyan-300"
-                              : "text-white/50 hover:text-white/85 hover:bg-white/[0.04]",
-                          )}
+                              ? {
+                                  background: "linear-gradient(90deg, rgba(33,150,243,0.18) 0%, rgba(33,150,243,0.06) 100%)",
+                                  borderLeft: "2px solid #2196F3",
+                                  color: "#90CAF9",
+                                  boxShadow: "inset 0 0 20px rgba(33,150,243,0.05)",
+                                }
+                              : { color: "rgba(144,202,249,0.45)" }
+                          }
+                          onMouseEnter={(e) => {
+                            if (!isActive) {
+                              (e.currentTarget as HTMLElement).style.background = "rgba(33,150,243,0.06)";
+                              (e.currentTarget as HTMLElement).style.color = "rgba(232,240,254,0.85)";
+                            }
+                          }}
+                          onMouseLeave={(e) => {
+                            if (!isActive) {
+                              (e.currentTarget as HTMLElement).style.background = "";
+                              (e.currentTarget as HTMLElement).style.color = "rgba(144,202,249,0.45)";
+                            }
+                          }}
                         >
                           <item.icon
-                            className={cn(
-                              "w-4 h-4 shrink-0 transition-colors",
-                              isActive
-                                ? "text-cyan-400"
-                                : "text-white/35 group-hover:text-white/60",
-                            )}
+                            className="w-4 h-4 shrink-0 transition-colors"
+                            style={{ color: isActive ? "#2196F3" : "rgba(144,202,249,0.35)" }}
                           />
-                          <span className="truncate flex-1 text-[13px]">
-                            {item.label}
-                          </span>
+                          <span className="truncate flex-1 text-[13px]">{item.label}</span>
                           {(item as { badge?: string }).badge ? (
                             <span
-                              className={cn(
-                                "text-[8px] font-bold px-1.5 py-0.5 rounded tracking-wider",
-                                (item as { badgeColor?: string }).badgeColor ===
-                                  "cyan"
-                                  ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/25"
-                                  : "bg-violet-500/15 text-violet-300 border border-violet-500/25",
-                              )}
+                              className="text-[8px] font-bold px-1.5 py-0.5 rounded tracking-wider"
+                              style={
+                                (item as { badgeColor?: string }).badgeColor === "blue"
+                                  ? { background: "rgba(33,150,243,0.15)", color: "#90CAF9", border: "1px solid rgba(33,150,243,0.3)" }
+                                  : { background: "rgba(139,92,246,0.15)", color: "#C4B5FD", border: "1px solid rgba(139,92,246,0.3)" }
+                              }
                             >
                               {(item as { badge?: string }).badge}
                             </span>
                           ) : null}
                           {isActive ? (
-                            <ChevronRight className="w-3 h-3 text-cyan-400/60 shrink-0" />
+                            <ChevronRight className="w-3 h-3 shrink-0" style={{ color: "rgba(33,150,243,0.6)" }} />
                           ) : null}
                         </div>
                       </Link>
@@ -262,27 +289,40 @@ export function Layout({ children }: { children: React.ReactNode }) {
         </nav>
 
         {/* Footer */}
-        <div className="shrink-0 p-3 border-t border-white/[0.05] space-y-3 relative">
-          {/* Status row */}
+        <div
+          className="shrink-0 p-3 space-y-3 relative"
+          style={{ borderTop: "1px solid rgba(33,150,243,0.1)" }}
+        >
           <div className="flex items-center justify-between px-1">
             <OdooStatus />
             <LlmBadge />
           </div>
-
-          {/* User */}
-          <div className="flex items-center gap-2.5 px-2 py-2 rounded-lg bg-white/[0.03] border border-white/[0.05]">
-            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-cyan-500/30 to-violet-500/30 flex items-center justify-center text-[10px] font-bold text-cyan-300 border border-cyan-500/20 shrink-0">
+          <div
+            className="flex items-center gap-2.5 px-2 py-2 rounded-lg"
+            style={{
+              background: "rgba(33,150,243,0.05)",
+              border: "1px solid rgba(33,150,243,0.12)",
+            }}
+          >
+            <div
+              className="w-7 h-7 rounded-lg flex items-center justify-center text-[10px] font-bold shrink-0"
+              style={{
+                background: "linear-gradient(135deg, rgba(33,150,243,0.3) 0%, rgba(139,92,246,0.25) 100%)",
+                border: "1px solid rgba(33,150,243,0.3)",
+                color: "#90CAF9",
+              }}
+            >
               MN
             </div>
             <div className="flex flex-col min-w-0">
-              <span className="text-xs font-semibold text-white/80 leading-tight">
+              <span className="text-xs font-semibold leading-tight" style={{ color: "rgba(232,240,254,0.8)" }}>
                 Motasim Noor
               </span>
-              <span className="text-[10px] text-white/35 leading-tight">
+              <span className="text-[10px] leading-tight" style={{ color: "rgba(144,202,249,0.35)" }}>
                 CFO / System Admin
               </span>
             </div>
-            <Activity className="w-3 h-3 text-emerald-400 shrink-0 ml-auto" />
+            <Activity className="w-3 h-3 shrink-0 ml-auto" style={{ color: "#4ade80" }} />
           </div>
         </div>
       </aside>
@@ -290,7 +330,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       {/* ── Main Content ─────────────────────────────────────────── */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
         <div className="flex-1 overflow-y-auto">
-          <div className="p-6 md:p-8">{children}</div>
+          <div className="p-6 md:p-8 page-enter">{children}</div>
         </div>
       </main>
     </div>

@@ -37,9 +37,9 @@ let _configLoading: Promise<LLMConfig> | null = null;
 
 const DEFAULT_CONFIG: LLMConfig = {
   activeProvider: process.env.OPENAI_API_KEY ? "openai" : "anthropic",
-  openaiModel: process.env.OPENAI_FAST_MODEL ?? "gpt-5.4-mini",
-  anthropicFastModel: "claude-haiku-4-5",
-  anthropicSmartModel: "claude-opus-4-5",
+  openaiModel: process.env.OPENAI_FAST_MODEL ?? "gpt-4.1-mini",
+  anthropicFastModel: "claude-3-haiku-20240307",
+  anthropicSmartModel: "claude-3-5-sonnet-20241022",
   customName: null,
   customBaseUrl: null,
   customModel: null,
