@@ -3,10 +3,9 @@ import numpy as np
 import pandas as pd
 import joblib
 from pathlib import Path
-from sklearn.model_selection import train_test_split, cross_val_score
-from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score, classification_report
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from xgboost import XGBClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import accuracy_score, f1_score, precision_score, recall_score
+from sklearn.ensemble import RandomForestClassifier
 from lightgbm import LGBMClassifier
 
 from data_loader import load_all_training_data
@@ -22,7 +21,7 @@ def evaluate_model(model, X_test, y_test, label: str) -> dict:
     f1 = f1_score(y_test, y_pred, average="weighted", zero_division=0)
     prec = precision_score(y_test, y_pred, average="weighted", zero_division=0)
     rec = recall_score(y_test, y_pred, average="weighted", zero_division=0)
-    print(f"\n[{label}] Accuracy={acc:.3f} F1={f1:.3f} Precision={prec:.3f} Recall={rec:.3f}")
+    print(f"[{label}] Accuracy={acc:.3f} F1={f1:.3f} Precision={prec:.3f} Recall={rec:.3f}")
     return {"accuracy": acc, "f1": f1, "precision": prec, "recall": rec}
 
 
@@ -42,16 +41,24 @@ def train_models():
         X, y_debit, y_credit, test_size=0.2, random_state=42
     )
 
-    models_config = {
-        "xgboost": XGBClassifier(
+    models_debit = {
+        "lightgbm": LGBMClassifier(
             n_estimators=200,
             max_depth=6,
             learning_rate=0.1,
-            use_label_encoder=False,
-            eval_metric="mlogloss",
+            random_state=42,
+            n_jobs=-1,
+            verbose=-1,
+        ),
+        "random_forest": RandomForestClassifier(
+            n_estimators=150,
+            max_depth=10,
             random_state=42,
             n_jobs=-1,
         ),
+    }
+
+    models_credit = {
         "lightgbm": LGBMClassifier(
             n_estimators=200,
             max_depth=6,
@@ -70,16 +77,16 @@ def train_models():
 
     results = {}
 
-    for model_name, model in models_config.items():
+    for model_name in models_debit:
         print(f"\n[Trainer] Training {model_name} for DEBIT account...")
-        model_debit = model.__class__(**model.get_params())
-        model_debit.fit(X_train, yd_train)
-        metrics_debit = evaluate_model(model_debit, X_test, yd_test, f"{model_name}/debit")
+        md = models_debit[model_name]
+        md.fit(X_train, yd_train)
+        metrics_debit = evaluate_model(md, X_test, yd_test, f"{model_name}/debit")
 
         print(f"[Trainer] Training {model_name} for CREDIT account...")
-        model_credit = model.__class__(**model.get_params())
-        model_credit.fit(X_train, yc_train)
-        metrics_credit = evaluate_model(model_credit, X_test, yc_test, f"{model_name}/credit")
+        mc = models_credit[model_name]
+        mc.fit(X_train, yc_train)
+        metrics_credit = evaluate_model(mc, X_test, yc_test, f"{model_name}/credit")
 
         results[model_name] = {
             "debit": metrics_debit,
@@ -87,8 +94,8 @@ def train_models():
             "avg_f1": (metrics_debit["f1"] + metrics_credit["f1"]) / 2,
         }
 
-        joblib.dump(model_debit, MODELS_DIR / f"{model_name}_debit.pkl")
-        joblib.dump(model_credit, MODELS_DIR / f"{model_name}_credit.pkl")
+        joblib.dump(md, MODELS_DIR / f"{model_name}_debit.pkl")
+        joblib.dump(mc, MODELS_DIR / f"{model_name}_credit.pkl")
 
     best_model_name = max(results, key=lambda k: results[k]["avg_f1"])
     print(f"\n[Trainer] Best model: {best_model_name} (avg F1={results[best_model_name]['avg_f1']:.3f})")

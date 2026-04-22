@@ -1,0 +1,1696 @@
+{
+  "100001": {
+    "code": "100001",
+    "name": "Liquidity Transfer",
+    "type": "Current Assets",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "100002": {
+    "code": "100002",
+    "name": "Petty Cash",
+    "type": "Bank and Cash",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "100003": {
+    "code": "100003",
+    "name": "Basim Visa Card",
+    "type": "Current Assets",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "100010": {
+    "code": "100010",
+    "name": "FRAMECAD F325iT",
+    "type": "Non-current Assets",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "1000101": {
+    "code": "1000101",
+    "name": "Shotcrete Spraying Machine",
+    "type": "Non-current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "100011": {
+    "code": "100011",
+    "name": "dji flip drone",
+    "type": "Non-current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "100023": {
+    "code": "100023",
+    "name": "Systems And Software",
+    "type": "Non-current Assets",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "100101": {
+    "code": "100101",
+    "name": "Right of use Asset (IFRS 16)",
+    "type": "Fixed Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "100102": {
+    "code": "100102",
+    "name": "Accumulated Depreciation right use asset (IFRS 16)",
+    "type": "Fixed Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "100103": {
+    "code": "100103",
+    "name": "VAT Receivable",
+    "type": "Receivable",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "100104": {
+    "code": "100104",
+    "name": "Withholding Receivable",
+    "type": "Receivable",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "101001": {
+    "code": "101001",
+    "name": "SA4320000003302122299940 Riyadh Bank",
+    "type": "Bank and Cash",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "101002": {
+    "code": "101002",
+    "name": "SA7520000003302122290440 USD Riyadh Bank",
+    "type": "Bank and Cash",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "101003": {
+    "code": "101003",
+    "name": "Visa Acc 4485099000004460",
+    "type": "Bank and Cash",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "101004": {
+    "code": "101004",
+    "name": "Visa Acc 4485099000004459",
+    "type": "Bank and Cash",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "101005": {
+    "code": "101005",
+    "name": "Visa Acc 4485099000004460",
+    "type": "Bank and Cash",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "101006": {
+    "code": "101006",
+    "name": "Outstanding Receipts",
+    "type": "Current Assets",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "1010060": {
+    "code": "1010060",
+    "name": "ANB SA7030400108095523440014",
+    "type": "Bank and Cash",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "101007": {
+    "code": "101007",
+    "name": "Visa & Master Credit Cards",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "101008": {
+    "code": "101008",
+    "name": "Gateway Credit Cards",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "101009": {
+    "code": "101009",
+    "name": "Manual Visa & Master Cards",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "101010": {
+    "code": "101010",
+    "name": "PayPal Account",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "101011": {
+    "code": "101011",
+    "name": "Outstanding Payments",
+    "type": "Current Assets",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "101060": {
+    "code": "101060",
+    "name": "VAT Paid to Customs",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "102011": {
+    "code": "102011",
+    "name": "Accounts Receivable",
+    "type": "Receivable",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "102012": {
+    "code": "102012",
+    "name": "Accounts Receivable (PoS)",
+    "type": "Receivable",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "102013": {
+    "code": "102013",
+    "name": "Post Dated Cheques Received",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "102014": {
+    "code": "102014",
+    "name": "Other Receivable",
+    "type": "Receivable",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "102015": {
+    "code": "102015",
+    "name": "Other Debtors",
+    "type": "Receivable",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "102016": {
+    "code": "102016",
+    "name": "Eddie Shidan Shid",
+    "type": "Current Assets",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "103001": {
+    "code": "103001",
+    "name": "Tender Document",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "103019": {
+    "code": "103019",
+    "name": "Letters Of Guarantee",
+    "type": "Current Assets",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "103020": {
+    "code": "103020",
+    "name": "Advance payment from Customs",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "103022": {
+    "code": "103022",
+    "name": "Row Material Inventory",
+    "type": "Current Assets",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104020": {
+    "code": "104020",
+    "name": "Prepaid Expense",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104021": {
+    "code": "104021",
+    "name": "Prepaid Medical Insurance",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104022": {
+    "code": "104022",
+    "name": "Prepaid Iqama Expense",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104023": {
+    "code": "104023",
+    "name": "Prepaid Office Rent",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104024": {
+    "code": "104024",
+    "name": "Prepaid Vehicles Insurance",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104025": {
+    "code": "104025",
+    "name": "Prepaid License Fees",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104026": {
+    "code": "104026",
+    "name": "Prepaid Maintenance",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104027": {
+    "code": "104027",
+    "name": "Prepaid Site Hosting Fees",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104028": {
+    "code": "104028",
+    "name": "Prepaid Employees Housing",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104029": {
+    "code": "104029",
+    "name": "Prepaid Schooling Fees",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104030": {
+    "code": "104030",
+    "name": "Prepaid Consultancy Fees",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104031": {
+    "code": "104031",
+    "name": "Prepaid Legal Fees",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104032": {
+    "code": "104032",
+    "name": "Prepaid Sponsorship Fees",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104033": {
+    "code": "104033",
+    "name": "PrePaid Advertisement Expenses",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104034": {
+    "code": "104034",
+    "name": "Prepaid Bank Guarantee",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104035": {
+    "code": "104035",
+    "name": "Other Prepayments",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104036": {
+    "code": "104036",
+    "name": "Prepaid Finance charge for Loans",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104037": {
+    "code": "104037",
+    "name": "Deposit - Office Rent",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104038": {
+    "code": "104038",
+    "name": "Deposits - Customs",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104039": {
+    "code": "104039",
+    "name": "Prepaid Fuel Expenses",
+    "type": "Prepayments",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104040": {
+    "code": "104040",
+    "name": "Deposit Others",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104041": {
+    "code": "104041",
+    "name": "VAT Input",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104043": {
+    "code": "104043",
+    "name": "Recoverable VAT Input - Reverse Charge",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "104060": {
+    "code": "104060",
+    "name": "Prepaid Land Rent",
+    "type": "Prepayments",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "105001": {
+    "code": "105001",
+    "name": "Cash",
+    "type": "Bank and Cash",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "105002": {
+    "code": "105002",
+    "name": "Cash (copy)",
+    "type": "Bank and Cash",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "106001": {
+    "code": "106001",
+    "name": "Leasehold Improvement",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "106002": {
+    "code": "106002",
+    "name": "Furniture and Equipment",
+    "type": "Non-current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "106003": {
+    "code": "106003",
+    "name": "Computer Hardware & Software",
+    "type": "Non-current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "106004": {
+    "code": "106004",
+    "name": "Motor Vehicles",
+    "type": "Non-current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "106005": {
+    "code": "106005",
+    "name": "Work In Progress",
+    "type": "Non-current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "106006": {
+    "code": "106006",
+    "name": "Amortisation on Leasehold Improvement",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "106007": {
+    "code": "106007",
+    "name": "Acc.Deprn.of Furniture & Office Equipment",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "106008": {
+    "code": "106008",
+    "name": "Acc. Deprn.Computer Hardware & Software",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "106009": {
+    "code": "106009",
+    "name": "Acc. Depreciation of Motor Vehicles",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "106010": {
+    "code": "106010",
+    "name": "New Office",
+    "type": "Current Assets",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "106011": {
+    "code": "106011",
+    "name": "Computer Card Renewal",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "106012": {
+    "code": "106012",
+    "name": "Equipment's",
+    "type": "Non-current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "106013": {
+    "code": "106013",
+    "name": "Acc.Deprn.of System and Software",
+    "type": "Non-current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "131100": {
+    "code": "131100",
+    "name": "Inventory - Raw Materials",
+    "type": "Current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201002": {
+    "code": "201002",
+    "name": "Payables",
+    "type": "Payable",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201003": {
+    "code": "201003",
+    "name": "Other Creditors",
+    "type": "Payable",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201004": {
+    "code": "201004",
+    "name": "Accrued - Salaries",
+    "type": "Current Liabilities",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201005": {
+    "code": "201005",
+    "name": "Leave Tickets Provision",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201006": {
+    "code": "201006",
+    "name": "Leave Days Provision",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201007": {
+    "code": "201007",
+    "name": "Accrued - Consulting",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201008": {
+    "code": "201008",
+    "name": "Accrued Salaries Increment",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201010": {
+    "code": "201010",
+    "name": "Accrued Other Personnel Cost",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201011": {
+    "code": "201011",
+    "name": "Accrued - Utilities",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201012": {
+    "code": "201012",
+    "name": "Accrued - Telephone",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201013": {
+    "code": "201013",
+    "name": "Accrued - Sponsorship",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201014": {
+    "code": "201014",
+    "name": "Accrued - Audit Fees",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201015": {
+    "code": "201015",
+    "name": "Accrued - Office Rent",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201016": {
+    "code": "201016",
+    "name": "Accrued Others",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201017": {
+    "code": "201017",
+    "name": "VAT Output",
+    "type": "Current Liabilities",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201018": {
+    "code": "201018",
+    "name": "Deferred income",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201019": {
+    "code": "201019",
+    "name": "Zakat Provision",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201020": {
+    "code": "201020",
+    "name": "Withholding Tax Payable",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201022": {
+    "code": "201022",
+    "name": "GOSI Employee Payable",
+    "type": "Payable",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201030": {
+    "code": "201030",
+    "name": "Accrued - GOSI",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201031": {
+    "code": "201031",
+    "name": "Visa & Master Credit Cards",
+    "type": "Credit Card",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201032": {
+    "code": "201032",
+    "name": "Gateway Credit Cards",
+    "type": "Credit Card",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201033": {
+    "code": "201033",
+    "name": "Manual Visa & Master Cards",
+    "type": "Credit Card",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201034": {
+    "code": "201034",
+    "name": "PayPal Account",
+    "type": "Credit Card",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "201035": {
+    "code": "201035",
+    "name": "Outstanding Withholding",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "202001": {
+    "code": "202001",
+    "name": "End of Service Provision",
+    "type": "Non-current Liabilities",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "202002": {
+    "code": "202002",
+    "name": "Reservations",
+    "type": "Non-current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "202003": {
+    "code": "202003",
+    "name": "VAT Payable",
+    "type": "Payable",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "202004": {
+    "code": "202004",
+    "name": "Withholding Tax Payable",
+    "type": "Payable",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "2030001": {
+    "code": "2030001",
+    "name": "dd",
+    "type": "Non-current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "203001": {
+    "code": "203001",
+    "name": "Related Parties",
+    "type": "Current Liabilities",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400001": {
+    "code": "400001",
+    "name": "Cost Of Sales",
+    "type": "Cost of Revenue",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400002": {
+    "code": "400002",
+    "name": "Cost Of Goods Sold I/C Sales",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400003": {
+    "code": "400003",
+    "name": "Basic Salary",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400004": {
+    "code": "400004",
+    "name": "GOSI",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400005": {
+    "code": "400005",
+    "name": "Transportation",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400006": {
+    "code": "400006",
+    "name": "Leave Ticket",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400007": {
+    "code": "400007",
+    "name": "Leave Salary",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400008": {
+    "code": "400008",
+    "name": "End Of Service Indemnity",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400009": {
+    "code": "400009",
+    "name": "Medical Insurance",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400010": {
+    "code": "400010",
+    "name": "Iqama Fees",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400011": {
+    "code": "400011",
+    "name": "Medical Test",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400012": {
+    "code": "400012",
+    "name": "Office Expenses",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400013": {
+    "code": "400013",
+    "name": "Uniform",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400014": {
+    "code": "400014",
+    "name": "Visa Expenses",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400015": {
+    "code": "400015",
+    "name": "Personnel Cost Others",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400016": {
+    "code": "400016",
+    "name": "Office Rent",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400017": {
+    "code": "400017",
+    "name": "Warehouse Rent",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400018": {
+    "code": "400018",
+    "name": "Water & Electricity",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400019": {
+    "code": "400019",
+    "name": "Other Utility Cahrges",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400020": {
+    "code": "400020",
+    "name": "Telephone And Internet",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400021": {
+    "code": "400021",
+    "name": "Courrier",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400022": {
+    "code": "400022",
+    "name": "Web Site Hosting Fees",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400024": {
+    "code": "400024",
+    "name": "Air tickets",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400025": {
+    "code": "400025",
+    "name": "Hotel",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400026": {
+    "code": "400026",
+    "name": "Staff Expenses",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400027": {
+    "code": "400027",
+    "name": "Mobile And Computer Accessories",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400028": {
+    "code": "400028",
+    "name": "Others",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400029": {
+    "code": "400029",
+    "name": "Audit Fees",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400030": {
+    "code": "400030",
+    "name": "Sponsorship Fees",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400031": {
+    "code": "400031",
+    "name": "Legal fees",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400032": {
+    "code": "400032",
+    "name": "Trade License Fees",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400033": {
+    "code": "400033",
+    "name": "Stationary",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400034": {
+    "code": "400034",
+    "name": "Equipment Rental",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400035": {
+    "code": "400035",
+    "name": "Write Off Receivables & Payables",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400036": {
+    "code": "400036",
+    "name": "Write Off Inventory",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400037": {
+    "code": "400037",
+    "name": "Amortisation of Preoperating Expenses",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400038": {
+    "code": "400038",
+    "name": "Cash Shortage",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400039": {
+    "code": "400039",
+    "name": "Spare Parts",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400040": {
+    "code": "400040",
+    "name": "Insurance",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400041": {
+    "code": "400041",
+    "name": "Cars & Vehicles Maintenance",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400042": {
+    "code": "400042",
+    "name": "Vehicles Insurance",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400043": {
+    "code": "400043",
+    "name": "Security & Guard",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400044": {
+    "code": "400044",
+    "name": "Cleaning",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400045": {
+    "code": "400045",
+    "name": "Subscriptions",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400046": {
+    "code": "400046",
+    "name": "Administrative Expenses",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400047": {
+    "code": "400047",
+    "name": "Kitchen and Buffet Expenses",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400048": {
+    "code": "400048",
+    "name": "Maintenance",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400049": {
+    "code": "400049",
+    "name": "Basim Alshawakbah Expenses",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400050": {
+    "code": "400050",
+    "name": "Others - Office Various Expenses",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400051": {
+    "code": "400051",
+    "name": "Other Bank Charges",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400052": {
+    "code": "400052",
+    "name": "Loss On Fixed Assets Disposal",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400053": {
+    "code": "400053",
+    "name": "Loss on Difference on Exchange",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400054": {
+    "code": "400054",
+    "name": "Disposal of Business Branch",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400055": {
+    "code": "400055",
+    "name": "Printer Ink",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400056": {
+    "code": "400056",
+    "name": "Previous Year Adjustments Account",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400057": {
+    "code": "400057",
+    "name": "Other Non Operating Expenses",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400058": {
+    "code": "400058",
+    "name": "Credit Card Charges",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400059": {
+    "code": "400059",
+    "name": "Bank Finance & Loan Charges",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400060": {
+    "code": "400060",
+    "name": "Air Miles Card Charges",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400062": {
+    "code": "400062",
+    "name": "PayPal Charges",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400063": {
+    "code": "400063",
+    "name": "Amortization on Leasehold Improvement",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400064": {
+    "code": "400064",
+    "name": "Depreciation Of Furniture & Office Equipment",
+    "type": "Non-current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400065": {
+    "code": "400065",
+    "name": "Depreciation Of Computer Hard & Soft",
+    "type": "Non-current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400066": {
+    "code": "400066",
+    "name": "Depreciation Of Motor Vehicles",
+    "type": "Non-current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400067": {
+    "code": "400067",
+    "name": "Consultancy Fees",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400068": {
+    "code": "400068",
+    "name": "Provision for Doubtful Debts",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400069": {
+    "code": "400069",
+    "name": "Closing Account",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400070": {
+    "code": "400070",
+    "name": "Depreciation on right of use asset (IFRS 16)",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400071": {
+    "code": "400071",
+    "name": "Depreciation Of Tools And Equipment",
+    "type": "Non-current Assets",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400072": {
+    "code": "400072",
+    "name": "Zakat Expense",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400073": {
+    "code": "400073",
+    "name": "Withholding Tax Expense",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400074": {
+    "code": "400074",
+    "name": "Salary Deductions",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "400075": {
+    "code": "400075",
+    "name": "Other Employee Expenses",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "40009": {
+    "code": "40009",
+    "name": "Traffic Violations",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "40017": {
+    "code": "40017",
+    "name": "depreciation Expenses",
+    "type": "Depreciation",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410001": {
+    "code": "410001",
+    "name": "Domestic Travel Expenses",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410002": {
+    "code": "410002",
+    "name": "International Travel Expenses",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410003": {
+    "code": "410003",
+    "name": "Overhead -v- Diesel",
+    "type": "Cost of Revenue",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410004": {
+    "code": "410004",
+    "name": "Consumable Materials",
+    "type": "Cost of Revenue",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410005": {
+    "code": "410005",
+    "name": "Cleaning Work",
+    "type": "Cost of Revenue",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410006": {
+    "code": "410006",
+    "name": "Safety",
+    "type": "Cost of Revenue",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410007": {
+    "code": "410007",
+    "name": "Electrical&Plumping Materials",
+    "type": "Cost of Revenue",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410008": {
+    "code": "410008",
+    "name": "Paint",
+    "type": "Cost of Revenue",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410009": {
+    "code": "410009",
+    "name": "Doors & Windows",
+    "type": "Cost of Revenue",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410010": {
+    "code": "410010",
+    "name": "Blacksmithing works",
+    "type": "Cost of Revenue",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410011": {
+    "code": "410011",
+    "name": "Petrol",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410012": {
+    "code": "410012",
+    "name": "Steels&Metals",
+    "type": "Cost of Revenue",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410013": {
+    "code": "410013",
+    "name": "Custom Duties",
+    "type": "Cost of Revenue",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410014": {
+    "code": "410014",
+    "name": "Medical Expenses",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410015": {
+    "code": "410015",
+    "name": "Building Material",
+    "type": "Cost of Revenue",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410016": {
+    "code": "410016",
+    "name": "Air Conditioner Materials",
+    "type": "Cost of Revenue",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410017": {
+    "code": "410017",
+    "name": "Fire And Alarm System",
+    "type": "Cost of Revenue",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410018": {
+    "code": "410018",
+    "name": "ISO Certification",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410019": {
+    "code": "410019",
+    "name": "Aluminum",
+    "type": "Cost of Revenue",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410020": {
+    "code": "410020",
+    "name": "R&D-Training",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410021": {
+    "code": "410021",
+    "name": "Employee Deductions – Disciplinary",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410022": {
+    "code": "410022",
+    "name": "Shipment Other Charges",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410023": {
+    "code": "410023",
+    "name": "Aldrees Fuel Fees",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410025": {
+    "code": "410025",
+    "name": "Courier Service",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410029": {
+    "code": "410029",
+    "name": "Engineering Consultancy Fee",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410030": {
+    "code": "410030",
+    "name": "Overtime Wage",
+    "type": "Cost of Revenue",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410031": {
+    "code": "410031",
+    "name": "Land Rent",
+    "type": "Cost of Revenue",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410040": {
+    "code": "410040",
+    "name": "Staff Bonus",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410050": {
+    "code": "410050",
+    "name": "Car Parking",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410051": {
+    "code": "410051",
+    "name": "TONER",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410052": {
+    "code": "410052",
+    "name": "Oil",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410062": {
+    "code": "410062",
+    "name": "Car Expenses",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410063": {
+    "code": "410063",
+    "name": "Tile and Ceramic",
+    "type": "Cost of Revenue",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410064": {
+    "code": "410064",
+    "name": "Containers Tests",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "410065": {
+    "code": "410065",
+    "name": "Trash Container",
+    "type": "Expenses",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "41069": {
+    "code": "41069",
+    "name": "Marketing",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "420010": {
+    "code": "420010",
+    "name": "Depreciation on FRAMECAD F325iT",
+    "type": "Depreciation",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "500001": {
+    "code": "500001",
+    "name": "Sales Account",
+    "type": "Income",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "500002": {
+    "code": "500002",
+    "name": "Sales of I/C",
+    "type": "Income",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "500003": {
+    "code": "500003",
+    "name": "Scrap Sales",
+    "type": "Other Income",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "500004": {
+    "code": "500004",
+    "name": "Sales from Other Region",
+    "type": "Income",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "500005": {
+    "code": "500005",
+    "name": "Advertising Income",
+    "type": "Income",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "500006": {
+    "code": "500006",
+    "name": "Branding Income",
+    "type": "Income",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "500007": {
+    "code": "500007",
+    "name": "Space Rental Income",
+    "type": "Income",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "500008": {
+    "code": "500008",
+    "name": "Service Income",
+    "type": "Income",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "500009": {
+    "code": "500009",
+    "name": "Interest Revenue",
+    "type": "Income",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "500010": {
+    "code": "500010",
+    "name": "Capital Gain",
+    "type": "Income",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "500011": {
+    "code": "500011",
+    "name": "Gain On Difference Of Exchange",
+    "type": "Income",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "500013": {
+    "code": "500013",
+    "name": "Other Income",
+    "type": "Income",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "999001": {
+    "code": "999001",
+    "name": "Capital",
+    "type": "Equity",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "999002": {
+    "code": "999002",
+    "name": "Historical Adjustment",
+    "type": "Non-current Assets",
+    "reconcile": true,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "999003": {
+    "code": "999003",
+    "name": "Cash Difference Loss",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "999911": {
+    "code": "999911",
+    "name": "Previous Years Experiences",
+    "type": "Equity",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "999991": {
+    "code": "999991",
+    "name": "Expenses Authorized by Owner",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "999992": {
+    "code": "999992",
+    "name": "Cash Deposit By Mubarak Aldossari",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "999993": {
+    "code": "999993",
+    "name": "Mubarak Aldossari Visa Card",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "999994": {
+    "code": "999994",
+    "name": "Al-Aali Mall",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "999995": {
+    "code": "999995",
+    "name": "Mubarak Salaries",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "999996": {
+    "code": "999996",
+    "name": "Al Shatea Mall",
+    "type": "Current Liabilities",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "999997": {
+    "code": "999997",
+    "name": "Cash Discount Gain",
+    "type": "Other Income",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "999998": {
+    "code": "999998",
+    "name": "Cash Discount Loss",
+    "type": "Expenses",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  },
+  "999999": {
+    "code": "999999",
+    "name": "Undistributed Profits/Losses",
+    "type": "Equity",
+    "reconcile": false,
+    "company": "GITC INTERNATIONAL HOLDING  CO."
+  }
+}

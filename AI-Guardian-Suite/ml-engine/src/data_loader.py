@@ -6,6 +6,8 @@ import psycopg2
 from pathlib import Path
 
 REFERENCE_DATA_PATH = Path(__file__).parent.parent.parent / "artifacts" / "api-server" / "src" / "lib" / "gitc-reference-data.json"
+REAL_ACCOUNTS_PATH = Path(__file__).parent.parent / "data" / "real_accounts.json"
+REAL_TRAINING_PATH = Path(__file__).parent.parent / "data" / "real_training_data.csv"
 
 DB_URL = os.getenv("DATABASE_URL", "postgresql://guardian:guardian123@localhost:5432/guardian_db")
 
@@ -24,6 +26,15 @@ def get_db_connection():
 
 
 def load_reference_accounts() -> pd.DataFrame:
+    if REAL_ACCOUNTS_PATH.exists():
+        with open(REAL_ACCOUNTS_PATH, encoding="utf-8") as f:
+            acc_dict = json.load(f)
+        rows = list(acc_dict.values())
+        df = pd.DataFrame(rows)
+        df["code"] = df["code"].astype(str).str.strip()
+        df["name"] = df["name"].astype(str).str.strip()
+        df["type"] = df["type"].astype(str).str.strip()
+        return df
     with open(REFERENCE_DATA_PATH) as f:
         data = json.load(f)
     accounts = data.get("accounts", [])
@@ -309,13 +320,27 @@ def _UNUSED_build_synthetic_training_data_old(accounts_df: pd.DataFrame) -> pd.D
     return pd.DataFrame(rows)
 
 
+def load_real_odoo_training_data() -> pd.DataFrame:
+    if not REAL_TRAINING_PATH.exists():
+        return pd.DataFrame()
+    df = pd.read_csv(REAL_TRAINING_PATH, encoding="utf-8-sig")
+    df = df.dropna(subset=["description", "debit_account_code", "credit_account_code"])
+    df = df[df["debit_account_code"].astype(str).str.len() > 0]
+    df = df[df["credit_account_code"].astype(str).str.len() > 0]
+    df["source"] = "real_odoo"
+    return df
+
+
 def load_all_training_data() -> pd.DataFrame:
     accounts_df = load_reference_accounts()
     db_transactions = load_transactions_from_db()
     supplier_memory = load_supplier_memory_from_db()
     synthetic = build_synthetic_training_data(accounts_df)
+    real_odoo = load_real_odoo_training_data()
 
     frames = [synthetic]
+    if not real_odoo.empty:
+        frames.append(real_odoo)
 
     if not db_transactions.empty and "type" in db_transactions.columns:
         db_rows = []
