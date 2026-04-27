@@ -9,18 +9,20 @@ namespace NomadGo.Vision
         private ONNXInferenceEngine inferenceEngine;
         private AppShell.CameraFix cameraFix;
 
-        private bool isProcessing = false;
-        private int frameSkip = 3;
-        private int frameCounter = 0;
+        private bool isProcessing    = false;
+        // FIX: track deferred-start so we don't lose the StartScan call made while model is loading
+        private bool pendingStart    = false;
+        private int  frameSkip       = 3;
+        private int  frameCounter    = 0;
         private List<DetectionResult> latestDetections = new List<DetectionResult>();
 
-        public bool IsProcessing   => isProcessing;
-        public bool IsEngineReady  => inferenceEngine != null && inferenceEngine.IsLoaded;
+        public bool IsProcessing    => isProcessing;
+        public bool IsEngineReady   => inferenceEngine != null && inferenceEngine.IsLoaded;
         public bool IsEngineLoading => inferenceEngine != null && inferenceEngine.IsLoading;
-        public bool IsInDemoMode   => inferenceEngine != null && inferenceEngine.IsInDemoMode;
+        public bool IsInDemoMode    => inferenceEngine != null && inferenceEngine.IsInDemoMode;
         public List<DetectionResult> LatestDetections => latestDetections;
         public float LastInferenceTimeMs => inferenceEngine != null ? inferenceEngine.LastInferenceTimeMs : 0f;
-        public int InputWidth { get; private set; } = 640;
+        public int InputWidth  { get; private set; } = 640;
         public int InputHeight { get; private set; } = 640;
 
         public delegate void DetectionsUpdatedHandler(List<DetectionResult> detections);
@@ -33,9 +35,9 @@ namespace NomadGo.Vision
 
             inferenceEngine.Initialize(config);
 
-            InputWidth = config.input_width;
+            InputWidth  = config.input_width;
             InputHeight = config.input_height;
-            frameSkip = Mathf.Max(0, (int)(30f / 8f) - 1);
+            frameSkip   = Mathf.Max(0, (int)(30f / 8f) - 1);
             Debug.Log($"[FrameProcessor] Initialized. FrameSkip={frameSkip}, Model={config.path}");
         }
 
@@ -47,9 +49,28 @@ namespace NomadGo.Vision
                 return;
             }
 
+            // FIX: if the model is still loading, queue a deferred start instead of failing silently.
+            // Previously this returned with LogError and the scan never started even after the model
+            // finished loading — the user had to press Start Scan a second time.
             if (!inferenceEngine.IsLoaded)
             {
-                Debug.LogError("[FrameProcessor] Engine not ready. Cannot start.");
+                if (inferenceEngine.IsLoading)
+                {
+                    if (!pendingStart)
+                    {
+                        pendingStart = true;
+                        Debug.Log("[FrameProcessor] Model still loading — deferring StartProcessing until ready.");
+                        StartCoroutine(WaitUntilEngineReady());
+                    }
+                    else
+                    {
+                        Debug.Log("[FrameProcessor] Deferred start already queued.");
+                    }
+                }
+                else
+                {
+                    Debug.LogError("[FrameProcessor] Engine not ready and not loading. Cannot start.");
+                }
                 return;
             }
 
@@ -63,15 +84,37 @@ namespace NomadGo.Vision
                 return;
             }
 
+            pendingStart = false;
             isProcessing = true;
             frameCounter = 0;
             Debug.Log("[FrameProcessor] Processing started.");
+        }
+
+        // FIX: coroutine that polls until the ONNX engine finishes loading, then starts processing.
+        // This ensures a single press of "Start Scan" always works regardless of load timing.
+        private IEnumerator WaitUntilEngineReady()
+        {
+            Debug.Log("[FrameProcessor] Waiting for engine to finish loading...");
+            while (inferenceEngine != null && inferenceEngine.IsLoading)
+                yield return new WaitForSeconds(0.25f);
+
+            if (inferenceEngine == null || !inferenceEngine.IsLoaded)
+            {
+                Debug.LogError("[FrameProcessor] Engine failed to load — cannot start processing.");
+                pendingStart = false;
+                yield break;
+            }
+
+            Debug.Log("[FrameProcessor] Engine ready after deferred wait — starting processing.");
+            StartProcessing();
         }
 
         public void InjectCameraFix(AppShell.CameraFix fix) => cameraFix = fix;
 
         public void StopProcessing()
         {
+            pendingStart = false;
+            StopAllCoroutines();
             isProcessing = false;
             latestDetections.Clear();
             OnDetectionsUpdated?.Invoke(latestDetections);

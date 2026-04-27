@@ -485,6 +485,30 @@ namespace NomadGo.AppShell
 
         private void OnStartScan()
         {
+            // FIX: Guard against pressing Start Scan while the model is still loading or
+            // downloading.  Previously isScanning was set to true immediately which caused
+            // the Update() loop to skip the "Loading AI model..." status message and the
+            // FrameProcessor.StartProcessing() call would fail silently (engine not ready).
+            // The button is already hidden/disabled in OnGUI during these states, but a
+            // direct call path (e.g. from tests or automation) could still reach here.
+            var fp = AppManager.Instance != null
+                ? AppManager.Instance.FrameProcessor
+                : FindObjectOfType<Vision.FrameProcessor>();
+
+            if (fp != null && fp.IsEngineLoading)
+            {
+                SetStatus("Loading AI model... please wait");
+                Debug.LogWarning("[UIBuilder] Start Scan ignored — engine still loading.");
+                return;
+            }
+
+            if (modelDownloadInProgress)
+            {
+                SetStatus($"Downloading model {modelDownloadProgress * 100f:F0}% — please wait");
+                Debug.LogWarning("[UIBuilder] Start Scan ignored — model download in progress.");
+                return;
+            }
+
             isScanning = true;
             detectedTotal = 0;
             detectedByLabel.Clear();
@@ -495,7 +519,6 @@ namespace NomadGo.AppShell
                 AppManager.Instance.StartScan();
             else
             {
-                var fp = FindObjectOfType<Vision.FrameProcessor>();
                 if (fp != null) fp.StartProcessing();
             }
         }

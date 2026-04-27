@@ -266,7 +266,13 @@ namespace NomadGo.AppShell
                 arSessionObject.SetActive(true);
 
             sessionStorage?.StartNewSession();
+
+            // FIX: FrameProcessor.StartProcessing() now handles the case where the ONNX engine
+            // is still loading by queuing a deferred start via coroutine (WaitUntilEngineReady).
+            // This means calling StartScan() at any point after Initialize() is safe — the
+            // processing will begin automatically as soon as the model finishes loading.
             frameProcessor?.StartProcessing();
+
             syncPulseManager?.StartPulsing();
 
             Debug.Log("[AppManager] Scan started.");

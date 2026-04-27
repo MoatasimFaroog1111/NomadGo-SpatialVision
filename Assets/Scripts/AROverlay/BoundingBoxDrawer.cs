@@ -1,120 +1,126 @@
+using System.Collections.Generic;
 using UnityEngine;
 using NomadGo.Vision;
 
 namespace NomadGo.AROverlay
 {
+    /// <summary>
+    /// Draws bounding boxes for detections using OnGUI (immediate-mode GUI).
+    ///
+    /// FIX: The original implementation used GL.Begin / Shader.Find("Hidden/Internal-Colored")
+    /// which causes a pink/magenta fallback on many Android devices (Adreno, Mali) when the
+    /// shader is stripped or unavailable in the build.  OnGUI requires no shaders and works
+    /// identically on every device.
+    /// </summary>
     public class BoundingBoxDrawer : MonoBehaviour
     {
         [Header("Box Settings")]
-        [SerializeField] private Color defaultColor = Color.green;
-        [SerializeField] private Color highConfidenceColor = Color.yellow;
+        [SerializeField] private Color defaultColor            = Color.green;
+        [SerializeField] private Color highConfidenceColor     = Color.yellow;
         [SerializeField] private float highConfidenceThreshold = 0.8f;
-        [SerializeField] private float cornerLength = 10f;
-        [SerializeField] private float borderWidth = 2f;
+        [SerializeField] private float cornerLength            = 10f;
+        [SerializeField] private float borderWidth             = 3f;
 
-        private Material lineMaterial;
+        // Cached textures — one per colour, created lazily
+        private Texture2D defaultTex;
+        private Texture2D highConfTex;
+        private GUIStyle  lineStyle;
+        private bool      stylesReady = false;
 
-        private void Start()
+        // Detections supplied externally (e.g. by OverlayRenderer or UIBuilder)
+        private List<DetectionResult> pendingDetections = new List<DetectionResult>();
+
+        // ---------------------------------------------------------------
+        // Public API
+        // ---------------------------------------------------------------
+
+        /// <summary>Replace the full detection list drawn this frame.</summary>
+        public void SetDetections(List<DetectionResult> detections)
         {
-            CreateLineMaterial();
+            pendingDetections = detections ?? new List<DetectionResult>();
         }
 
-        private void CreateLineMaterial()
-        {
-            Shader shader = Shader.Find("Hidden/Internal-Colored");
-            if (shader == null)
-                shader = Shader.Find("UI/Default");
-            if (shader == null)
-                shader = Shader.Find("Unlit/Color");
-            if (shader == null)
-            {
-                Debug.LogWarning("[BoundingBoxDrawer] No suitable shader found.");
-                return;
-            }
-
-            lineMaterial = new Material(shader);
-            lineMaterial.hideFlags = HideFlags.HideAndDontSave;
-            lineMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            lineMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-            lineMaterial.SetInt("_Cull", (int)UnityEngine.Rendering.CullMode.Off);
-            lineMaterial.SetInt("_ZWrite", 0);
-        }
-
+        /// <summary>Draw a single box immediately (called from OnGUI context only).</summary>
         public void DrawBox(DetectionResult detection)
         {
-            if (lineMaterial == null) return;
-
-            Color color = detection.confidence >= highConfidenceThreshold
-                ? highConfidenceColor
-                : defaultColor;
-
-            Rect box = detection.boundingBox;
-            DrawRectOutline(box, color);
-            DrawCorners(box, color);
+            EnsureStyles();
+            bool hi = detection.confidence >= highConfidenceThreshold;
+            lineStyle.normal.background = hi ? highConfTex : defaultTex;
+            DrawBoxGUI(detection.boundingBox, lineStyle);
         }
 
-        private void DrawRectOutline(Rect rect, Color color)
+        // ---------------------------------------------------------------
+        // Unity messages
+        // ---------------------------------------------------------------
+
+        private void OnGUI()
         {
-            GL.PushMatrix();
-            lineMaterial.SetPass(0);
-            GL.LoadPixelMatrix();
-
-            GL.Begin(GL.QUADS);
-            GL.Color(color);
-
-            DrawLine(new Vector2(rect.xMin, rect.yMin), new Vector2(rect.xMax, rect.yMin), borderWidth);
-            DrawLine(new Vector2(rect.xMax, rect.yMin), new Vector2(rect.xMax, rect.yMax), borderWidth);
-            DrawLine(new Vector2(rect.xMax, rect.yMax), new Vector2(rect.xMin, rect.yMax), borderWidth);
-            DrawLine(new Vector2(rect.xMin, rect.yMax), new Vector2(rect.xMin, rect.yMin), borderWidth);
-
-            GL.End();
-            GL.PopMatrix();
+            if (pendingDetections == null || pendingDetections.Count == 0) return;
+            EnsureStyles();
+            foreach (var det in pendingDetections)
+                DrawBox(det);
         }
 
-        private void DrawCorners(Rect rect, Color color)
+        // ---------------------------------------------------------------
+        // Helpers
+        // ---------------------------------------------------------------
+
+        private void EnsureStyles()
         {
-            GL.PushMatrix();
-            lineMaterial.SetPass(0);
-            GL.LoadPixelMatrix();
+            if (stylesReady) return;
 
-            GL.Begin(GL.QUADS);
-            GL.Color(color);
+            defaultTex  = MakeTex(defaultColor);
+            highConfTex = MakeTex(highConfidenceColor);
 
-            float cw = borderWidth * 2;
+            lineStyle = new GUIStyle(GUIStyle.none);
+            lineStyle.normal.background = defaultTex;
 
-            DrawLine(new Vector2(rect.xMin, rect.yMin), new Vector2(rect.xMin + cornerLength, rect.yMin), cw);
-            DrawLine(new Vector2(rect.xMin, rect.yMin), new Vector2(rect.xMin, rect.yMin + cornerLength), cw);
-
-            DrawLine(new Vector2(rect.xMax - cornerLength, rect.yMin), new Vector2(rect.xMax, rect.yMin), cw);
-            DrawLine(new Vector2(rect.xMax, rect.yMin), new Vector2(rect.xMax, rect.yMin + cornerLength), cw);
-
-            DrawLine(new Vector2(rect.xMin, rect.yMax - cornerLength), new Vector2(rect.xMin, rect.yMax), cw);
-            DrawLine(new Vector2(rect.xMin, rect.yMax), new Vector2(rect.xMin + cornerLength, rect.yMax), cw);
-
-            DrawLine(new Vector2(rect.xMax, rect.yMax - cornerLength), new Vector2(rect.xMax, rect.yMax), cw);
-            DrawLine(new Vector2(rect.xMax - cornerLength, rect.yMax), new Vector2(rect.xMax, rect.yMax), cw);
-
-            GL.End();
-            GL.PopMatrix();
+            stylesReady = true;
         }
 
-        private void DrawLine(Vector2 start, Vector2 end, float width)
+        private static Texture2D MakeTex(Color c)
         {
-            Vector2 dir = (end - start).normalized;
-            Vector2 perp = new Vector2(-dir.y, dir.x) * width * 0.5f;
+            var t = new Texture2D(1, 1, TextureFormat.RGBA32, false);
+            t.SetPixel(0, 0, c);
+            t.Apply();
+            return t;
+        }
 
-            GL.Vertex3(start.x + perp.x, start.y + perp.y, 0);
-            GL.Vertex3(start.x - perp.x, start.y - perp.y, 0);
-            GL.Vertex3(end.x - perp.x, end.y - perp.y, 0);
-            GL.Vertex3(end.x + perp.x, end.y + perp.y, 0);
+        private void DrawBoxGUI(Rect box, GUIStyle style)
+        {
+            float bw = borderWidth;
+            float cl = cornerLength;
+
+            // ---- four full sides ----
+            // Top
+            GUI.Box(new Rect(box.xMin, box.yMin, box.width, bw), GUIContent.none, style);
+            // Bottom
+            GUI.Box(new Rect(box.xMin, box.yMax - bw, box.width, bw), GUIContent.none, style);
+            // Left
+            GUI.Box(new Rect(box.xMin, box.yMin, bw, box.height), GUIContent.none, style);
+            // Right
+            GUI.Box(new Rect(box.xMax - bw, box.yMin, bw, box.height), GUIContent.none, style);
+
+            // ---- corner accents (thicker) ----
+            float cw = bw * 2f;
+            // Top-left
+            GUI.Box(new Rect(box.xMin, box.yMin, cl, cw), GUIContent.none, style);
+            GUI.Box(new Rect(box.xMin, box.yMin, cw, cl), GUIContent.none, style);
+            // Top-right
+            GUI.Box(new Rect(box.xMax - cl, box.yMin, cl, cw), GUIContent.none, style);
+            GUI.Box(new Rect(box.xMax - cw, box.yMin, cw, cl), GUIContent.none, style);
+            // Bottom-left
+            GUI.Box(new Rect(box.xMin, box.yMax - cw, cl, cw), GUIContent.none, style);
+            GUI.Box(new Rect(box.xMin, box.yMax - cl, cw, cl), GUIContent.none, style);
+            // Bottom-right
+            GUI.Box(new Rect(box.xMax - cl, box.yMax - cw, cl, cw), GUIContent.none, style);
+            GUI.Box(new Rect(box.xMax - cw, box.yMax - cl, cw, cl), GUIContent.none, style);
         }
 
         private void OnDestroy()
         {
-            if (lineMaterial != null)
-            {
-                DestroyImmediate(lineMaterial);
-            }
+            if (defaultTex  != null) Destroy(defaultTex);
+            if (highConfTex != null) Destroy(highConfTex);
         }
     }
 }
