@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "com.unity.barracuda": "3.0.0",
+    "com.github.asus4.onnxruntime": "https://github.com/asus4/onnxruntime-unity.git",
     "com.unity.xr.arcore": "5.1.5",
     "com.unity.xr.arfoundation": "5.1.5",
     "com.unity.xr.management": "4.4.0",
