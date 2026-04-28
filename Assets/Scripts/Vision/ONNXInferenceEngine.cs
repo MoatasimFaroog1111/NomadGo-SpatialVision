@@ -6,10 +6,8 @@ using System.Linq;
 using UnityEngine;
 using UnityEngine.Networking;
 
-#if UNITY_BARRACUDA
-using Unity.Barracuda;
-using Unity.Barracuda.ONNX;
-#endif
+using Microsoft.ML.OnnxRuntime;
+using Microsoft.ML.OnnxRuntime.Tensors;
 
 namespace NomadGo.Vision
 {
@@ -28,17 +26,15 @@ namespace NomadGo.Vision
         private bool  isLoading       = false;
         private float lastInferenceMs = 0f;
 
-        // FIX: retry constants — Android OBB extraction can be slow on first launch
         private const int   MAX_RETRIES         = 3;
         private const float RETRY_DELAY_SECONDS = 2f;
-        // FIX: increased timeout — yolov8n.onnx is ~12 MB, needs more than default 30s on slow devices
         private const int   REQUEST_TIMEOUT_SECONDS = 120;
 
-#if UNITY_BARRACUDA
-        private Model   barracudaModel;
-        private IWorker barracudaWorker;
-        private bool    barracudaReady = false;
-#endif
+        // ONNX Runtime
+        private InferenceSession ortSession;
+        private string ortInputName = "images";
+        private string ortOutputName = "output0";
+        private bool ortReady = false;
 
         public bool  IsLoaded            => isLoaded;
         public bool  IsLoading           => isLoading;
@@ -64,38 +60,50 @@ namespace NomadGo.Vision
         public void ReloadModel(string onnxPath, string newLabelsPath)
         {
             if (isLoading) return;
+
             Debug.Log($"[ONNXEngine] ReloadModel → {onnxPath}");
             overrideOnnxPath   = onnxPath;
             overrideLabelsPath = newLabelsPath;
-#if UNITY_BARRACUDA
-            barracudaWorker?.Dispose();
-            barracudaWorker = null;
-            barracudaModel  = null;
-            barracudaReady  = false;
-#endif
+
+            ortSession?.Dispose();
+            ortSession = null;
+            ortReady = false;
+
             isLoaded    = false;
             useDemoMode = false;
+
             if (!string.IsNullOrEmpty(newLabelsPath) && File.Exists(newLabelsPath))
             {
-                try { labels = File.ReadAllText(newLabelsPath).Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries); }
-                catch { LoadLabels(modelPath); }
+                try
+                {
+                    labels = File.ReadAllText(newLabelsPath)
+                        .Split(new[] { '\n', '\r' }, StringSplitOptions.RemoveEmptyEntries);
+                }
+                catch
+                {
+                    LoadLabels(modelPath);
+                }
             }
+
             StartCoroutine(LoadModelAsync());
         }
 
         public List<DetectionResult> RunInference(Texture2D frame)
         {
-#if UNITY_BARRACUDA
-            if (!useDemoMode && barracudaReady && barracudaWorker != null && frame != null)
+            if (!useDemoMode && ortReady && ortSession != null && frame != null)
             {
-                try { return RunBarracudaInference(frame); }
+                try
+                {
+                    return RunOnnxRuntimeInference(frame);
+                }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[ONNXEngine] Inference error: {ex.Message}");
+                    Debug.LogError($"[ONNXEngine] ONNX Runtime inference error: {ex.Message}");
+                    Debug.LogError($"[ONNXEngine] StackTrace: {ex.StackTrace}");
                     return GenerateDemoDetections();
                 }
             }
-#endif
+
             return isLoaded ? GenerateDemoDetections() : new List<DetectionResult>();
         }
 
@@ -103,6 +111,7 @@ namespace NomadGo.Vision
         {
             if (labels != null && classId >= 0 && classId < labels.Length)
                 return labels[classId];
+
             return $"class_{classId}";
         }
 
@@ -132,6 +141,7 @@ namespace NomadGo.Vision
                     "mouse","remote","keyboard","cell phone","microwave","oven","toaster","sink",
                     "refrigerator","book","clock","vase","scissors","teddy bear","hair drier","toothbrush"
                 };
+
                 Debug.LogWarning("[ONNXEngine] labels.txt not found in Resources — using built-in COCO 80.");
             }
         }
@@ -140,33 +150,24 @@ namespace NomadGo.Vision
         {
             isLoading = true;
 
-#if UNITY_BARRACUDA
-            // FIX: use overrideOnnxPath if set by ReloadModel, else build from config path
             string effectivePath = !string.IsNullOrEmpty(overrideOnnxPath)
                 ? overrideOnnxPath
                 : Path.Combine(Application.streamingAssetsPath, modelPath);
 
-            Debug.Log($"[ONNXEngine] Loading model from: {effectivePath}");
+            Debug.Log($"[ONNXEngine] Loading ONNX Runtime model from: {effectivePath}");
             Debug.Log($"[ONNXEngine] StreamingAssetsPath = {Application.streamingAssetsPath}");
             Debug.Log($"[ONNXEngine] Platform = {Application.platform}");
 
             byte[] bytes = null;
 
 #if UNITY_ANDROID && !UNITY_EDITOR
-            // On Android, StreamingAssets lives inside the APK (JAR/ZIP).
-            // MUST use UnityWebRequest — File.Exists / File.ReadAllBytes do NOT work.
-            // FIX: added retry loop because on first cold launch Android needs time
-            // to extract the APK's StreamingAssets before they’re readable.
             for (int attempt = 1; attempt <= MAX_RETRIES; attempt++)
             {
                 Debug.Log($"[ONNXEngine] Android load attempt {attempt}/{MAX_RETRIES}");
 
                 using (var req = UnityWebRequest.Get(effectivePath))
                 {
-                    // FIX: increased timeout from default (no timeout set = 30s) to 120s
-                    // yolov8n.onnx is ~12 MB — slow devices need more time
                     req.timeout = REQUEST_TIMEOUT_SECONDS;
-
                     yield return req.SendWebRequest();
 
                     if (req.result == UnityWebRequest.Result.Success)
@@ -187,8 +188,9 @@ namespace NomadGo.Vision
                         else
                         {
                             Debug.LogError($"[ONNXEngine] All {MAX_RETRIES} attempts failed. Last error: {req.error}");
-                            Debug.LogError($"[ONNXEngine] CRITICAL: yolov8n.onnx could not be loaded → falling back to DEMO mode.");
+                            Debug.LogError($"[ONNXEngine] CRITICAL: ONNX model could not be loaded → falling back to DEMO mode.");
                             Debug.LogError($"[ONNXEngine] Verify the file exists at: Assets/StreamingAssets/Models/yolov8n.onnx");
+
                             isLoading = false;
                             ActivateDemoMode();
                             yield break;
@@ -197,21 +199,21 @@ namespace NomadGo.Vision
                 }
             }
 #else
-            // Editor / Desktop: direct File I/O is fine
             if (!File.Exists(effectivePath))
             {
                 Debug.LogError($"[ONNXEngine] File not found: {effectivePath} → DEMO mode.");
                 Debug.LogError($"[ONNXEngine] Place yolov8n.onnx at: Assets/StreamingAssets/Models/yolov8n.onnx");
+
                 isLoading = false;
                 ActivateDemoMode();
                 yield break;
             }
+
             bytes = File.ReadAllBytes(effectivePath);
             Debug.Log($"[ONNXEngine] Loaded {bytes.Length / 1024 / 1024f:F1} MB from disk.");
             yield return null;
 #endif
 
-            // bytes loaded successfully — now initialize Barracuda
             if (bytes == null || bytes.Length == 0)
             {
                 Debug.LogError("[ONNXEngine] Bytes array is null or empty after load → DEMO mode.");
@@ -220,59 +222,36 @@ namespace NomadGo.Vision
                 yield break;
             }
 
-            // FIX: ModelLoader.Load(byte[]) reads Barracuda binary (.nn) format, NOT ONNX.
-            // yolov8n.onnx is a standard ONNX protobuf file.
-            // CORRECT approach: use ONNXModelConverter.Convert(byte[]) which parses ONNX
-            // protobuf and returns a Barracuda Model directly — no pre-conversion needed.
             try
             {
-                Debug.Log($"[ONNXEngine] Parsing ONNX model ({bytes.Length / 1024 / 1024f:F1} MB)...");
-                var onnxConverter = new ONNXModelConverter(
-                    optimizeModel: true,
-                    treatErrorsAsWarnings: false,
-                    forceArbitraryBatchSize: true);
-                barracudaModel = onnxConverter.Convert(bytes);
+                Debug.Log($"[ONNXEngine] Creating ONNX Runtime session ({bytes.Length / 1024 / 1024f:F1} MB)...");
 
-                // FIX: WorkerFactory.Type.CSharpBurst requires Burst package.
-                // On Android IL2CPP, use ComputePrecompiled for GPU or CSharpBurst for CPU.
-                // FIX: fall back gracefully if GPU worker fails.
-                try
-                {
-                    barracudaWorker = WorkerFactory.CreateWorker(
-                        WorkerFactory.Type.ComputePrecompiled, barracudaModel);
-                    Debug.Log("[ONNXEngine] Worker created: ComputePrecompiled (GPU).");
-                }
-                catch (Exception gpuEx)
-                {
-                    Debug.LogWarning($"[ONNXEngine] GPU worker failed ({gpuEx.Message}), falling back to CSharpBurst (CPU).");
-                    barracudaWorker = WorkerFactory.CreateWorker(
-                        WorkerFactory.Type.CSharpBurst, barracudaModel);
-                    Debug.Log("[ONNXEngine] Worker created: CSharpBurst (CPU fallback).");
-                }
+                var sessionOptions = new SessionOptions();
+                sessionOptions.GraphOptimizationLevel = GraphOptimizationLevel.ORT_ENABLE_ALL;
 
-                barracudaReady = true;
-                isLoaded       = true;
-                isLoading      = false;
-                useDemoMode    = false; // FIX: explicitly clear demo mode flag on success
-                Debug.Log($"[ONNXEngine] ✅ Barracuda model ready. Real AI inference ACTIVE.");
+                ortSession = new InferenceSession(bytes, sessionOptions);
+
+                ortInputName = ortSession.InputMetadata.Keys.FirstOrDefault() ?? "images";
+                ortOutputName = ortSession.OutputMetadata.Keys.FirstOrDefault() ?? "output0";
+
+                Debug.Log($"[ONNXEngine] Input name: {ortInputName}");
+                Debug.Log($"[ONNXEngine] Output name: {ortOutputName}");
+
+                ortReady = true;
+                isLoaded = true;
+                isLoading = false;
+                useDemoMode = false;
+
+                Debug.Log("[ONNXEngine] ✅ ONNX Runtime model ready. Real AI inference ACTIVE.");
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[ONNXEngine] Barracuda model init failed: {ex.GetType().Name}: {ex.Message}");
+                Debug.LogError($"[ONNXEngine] ONNX Runtime init failed: {ex.GetType().Name}: {ex.Message}");
                 Debug.LogError($"[ONNXEngine] StackTrace: {ex.StackTrace}");
+
                 isLoading = false;
                 ActivateDemoMode();
             }
-#else
-            // UNITY_BARRACUDA not defined — this means the Barracuda package is not installed
-            // or UNITY_BARRACUDA is not in Scripting Define Symbols.
-            Debug.LogError("[ONNXEngine] UNITY_BARRACUDA symbol is NOT defined!");
-            Debug.LogError("[ONNXEngine] Fix: Add 'UNITY_BARRACUDA' to ProjectSettings → Player → Scripting Define Symbols");
-            Debug.LogError("[ONNXEngine] AND ensure 'com.unity.barracuda' is in Packages/manifest.json");
-            isLoading = false;
-            ActivateDemoMode();
-            yield return null;
-#endif
         }
 
         private void ActivateDemoMode()
@@ -280,92 +259,179 @@ namespace NomadGo.Vision
             useDemoMode = true;
             isLoaded    = true;
             isLoading   = false;
+
             Debug.LogWarning("[ONNXEngine] ⚠️ DEMO mode active — using simulated detections. NOT production-ready.");
         }
 
-#if UNITY_BARRACUDA
-        private List<DetectionResult> RunBarracudaInference(Texture2D frame)
+        private List<DetectionResult> RunOnnxRuntimeInference(Texture2D frame)
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
 
-            float[] nhwcData    = TextureToNHWC(frame);
-            var     inputTensor = new Tensor(new TensorShape(1, inputHeight, inputWidth, 3), nhwcData);
+            DenseTensor<float> inputTensor = TextureToNCHWTensor(frame);
 
-            barracudaWorker.Execute(inputTensor);
-            inputTensor.Dispose();
+            using (var input = NamedOnnxValue.CreateFromTensor(ortInputName, inputTensor))
+            using (var results = ortSession.Run(new[] { input }))
+            {
+                sw.Stop();
+                lastInferenceMs = (float)sw.Elapsed.TotalMilliseconds;
 
-            Tensor output = barracudaWorker.PeekOutput("output0");
-            sw.Stop();
-            lastInferenceMs = (float)sw.Elapsed.TotalMilliseconds;
+                var outputValue = results.FirstOrDefault(r => r.Name == ortOutputName) ?? results.First();
+                Tensor<float> outputTensor = outputValue.AsTensor<float>();
 
-            var detections = ParseYOLOv8Barracuda(output);
-            output.Dispose();
-
-            return ApplyNMS(detections).Take(maxDetections).ToList();
+                var detections = ParseYOLOv8OnnxRuntime(outputTensor);
+                return ApplyNMS(detections).Take(maxDetections).ToList();
+            }
         }
 
-        private float[] TextureToNHWC(Texture2D src)
+        private DenseTensor<float> TextureToNCHWTensor(Texture2D src)
         {
-            var rt   = RenderTexture.GetTemporary(inputWidth, inputHeight, 0, RenderTextureFormat.ARGB32);
+            var rt = RenderTexture.GetTemporary(inputWidth, inputHeight, 0, RenderTextureFormat.ARGB32);
+
             Graphics.Blit(src, rt);
+
             var prev = RenderTexture.active;
             RenderTexture.active = rt;
+
             var tex = new Texture2D(inputWidth, inputHeight, TextureFormat.RGB24, false);
             tex.ReadPixels(new Rect(0, 0, inputWidth, inputHeight), 0, 0);
             tex.Apply();
+
             RenderTexture.active = prev;
             RenderTexture.ReleaseTemporary(rt);
 
             Color32[] px = tex.GetPixels32();
             DestroyImmediate(tex);
 
-            int     hw = inputWidth * inputHeight;
-            float[] d  = new float[hw * 3];
+            var tensor = new DenseTensor<float>(new[] { 1, 3, inputHeight, inputWidth });
 
-            for (int i = 0; i < hw; i++)
+            for (int y = 0; y < inputHeight; y++)
             {
-                int row = inputHeight - 1 - (i / inputWidth);
-                int col = i % inputWidth;
-                int s   = row * inputWidth + col;
-                d[i * 3 + 0] = px[s].r / 255f;
-                d[i * 3 + 1] = px[s].g / 255f;
-                d[i * 3 + 2] = px[s].b / 255f;
+                for (int x = 0; x < inputWidth; x++)
+                {
+                    int srcY = inputHeight - 1 - y;
+                    int pixelIndex = srcY * inputWidth + x;
+                    Color32 p = px[pixelIndex];
+
+                    tensor[0, 0, y, x] = p.r / 255f;
+                    tensor[0, 1, y, x] = p.g / 255f;
+                    tensor[0, 2, y, x] = p.b / 255f;
+                }
             }
-            return d;
+
+            return tensor;
         }
 
-        private List<DetectionResult> ParseYOLOv8Barracuda(Tensor output)
+        private List<DetectionResult> ParseYOLOv8OnnxRuntime(Tensor<float> output)
         {
-            const int numAnchors = 8400;
-            int       numClasses = labels != null ? Mathf.Min(labels.Length, 80) : 80;
-            float     sx = 1f / inputWidth;
-            float     sy = 1f / inputHeight;
+            var dims = output.Dimensions.ToArray();
 
+            int numClasses = labels != null ? Mathf.Min(labels.Length, 80) : 80;
             var results = new List<DetectionResult>();
 
-            for (int a = 0; a < numAnchors; a++)
+            // YOLOv8 common output:
+            // [1, 84, 8400] = batch, attributes, anchors
+            // attributes = x, y, w, h + classes
+            if (dims.Length == 3 && dims[1] >= 5)
             {
-                float maxConf = 0f; int maxCls = 0;
-                for (int c = 0; c < numClasses; c++)
+                int attributes = dims[1];
+                int anchors = dims[2];
+                int availableClasses = Mathf.Min(numClasses, attributes - 4);
+
+                for (int a = 0; a < anchors; a++)
                 {
-                    float s = output[0, 0, a, 4 + c];
-                    if (s > maxConf) { maxConf = s; maxCls = c; }
+                    float maxConf = 0f;
+                    int maxCls = 0;
+
+                    for (int c = 0; c < availableClasses; c++)
+                    {
+                        float score = output[0, 4 + c, a];
+
+                        if (score > maxConf)
+                        {
+                            maxConf = score;
+                            maxCls = c;
+                        }
+                    }
+
+                    if (maxConf < confidenceThreshold)
+                        continue;
+
+                    float cx = output[0, 0, a] / inputWidth;
+                    float cy = output[0, 1, a] / inputHeight;
+                    float bw = output[0, 2, a] / inputWidth;
+                    float bh = output[0, 3, a] / inputHeight;
+
+                    string lbl = (labels != null && maxCls < labels.Length) ? labels[maxCls] : $"cls{maxCls}";
+
+                    results.Add(new DetectionResult(
+                        maxCls,
+                        lbl,
+                        maxConf,
+                        new Rect(
+                            Mathf.Clamp01(cx - bw * 0.5f),
+                            Mathf.Clamp01(cy - bh * 0.5f),
+                            Mathf.Clamp(bw, 0.01f, 1f),
+                            Mathf.Clamp(bh, 0.01f, 1f)
+                        )
+                    ));
                 }
-                if (maxConf < confidenceThreshold) continue;
 
-                float cx = output[0, 0, a, 0] * sx;
-                float cy = output[0, 0, a, 1] * sy;
-                float bw = output[0, 0, a, 2] * sx;
-                float bh = output[0, 0, a, 3] * sy;
-
-                string lbl = (labels != null && maxCls < labels.Length) ? labels[maxCls] : $"cls{maxCls}";
-                results.Add(new DetectionResult(maxCls, lbl, maxConf,
-                    new Rect(Mathf.Clamp01(cx - bw * .5f), Mathf.Clamp01(cy - bh * .5f),
-                             Mathf.Clamp(bw, 0.01f, 1f),   Mathf.Clamp(bh, 0.01f, 1f))));
+                return results;
             }
+
+            // Alternative YOLO export output:
+            // [1, 8400, 84]
+            if (dims.Length == 3 && dims[2] >= 5)
+            {
+                int anchors = dims[1];
+                int attributes = dims[2];
+                int availableClasses = Mathf.Min(numClasses, attributes - 4);
+
+                for (int a = 0; a < anchors; a++)
+                {
+                    float maxConf = 0f;
+                    int maxCls = 0;
+
+                    for (int c = 0; c < availableClasses; c++)
+                    {
+                        float score = output[0, a, 4 + c];
+
+                        if (score > maxConf)
+                        {
+                            maxConf = score;
+                            maxCls = c;
+                        }
+                    }
+
+                    if (maxConf < confidenceThreshold)
+                        continue;
+
+                    float cx = output[0, a, 0] / inputWidth;
+                    float cy = output[0, a, 1] / inputHeight;
+                    float bw = output[0, a, 2] / inputWidth;
+                    float bh = output[0, a, 3] / inputHeight;
+
+                    string lbl = (labels != null && maxCls < labels.Length) ? labels[maxCls] : $"cls{maxCls}";
+
+                    results.Add(new DetectionResult(
+                        maxCls,
+                        lbl,
+                        maxConf,
+                        new Rect(
+                            Mathf.Clamp01(cx - bw * 0.5f),
+                            Mathf.Clamp01(cy - bh * 0.5f),
+                            Mathf.Clamp(bw, 0.01f, 1f),
+                            Mathf.Clamp(bh, 0.01f, 1f)
+                        )
+                    ));
+                }
+
+                return results;
+            }
+
+            Debug.LogError($"[ONNXEngine] Unsupported YOLO output shape: [{string.Join(",", dims)}]");
             return results;
         }
-#endif
 
         public static float ComputeIOU(Rect a, Rect b)
         {
@@ -373,29 +439,40 @@ namespace NomadGo.Vision
             float x2    = Mathf.Min(a.xMax, b.xMax), y2 = Mathf.Min(a.yMax, b.yMax);
             float inter = Mathf.Max(0, x2 - x1) * Mathf.Max(0, y2 - y1);
             float uni   = a.width * a.height + b.width * b.height - inter;
+
             return uni > 0f ? inter / uni : 0f;
         }
 
         private List<DetectionResult> ApplyNMS(List<DetectionResult> dets)
         {
             dets.Sort((a, b) => b.confidence.CompareTo(a.confidence));
-            var  kept = new List<DetectionResult>();
-            var  sup  = new bool[dets.Count];
+
+            var kept = new List<DetectionResult>();
+            var sup  = new bool[dets.Count];
+
             for (int i = 0; i < dets.Count; i++)
             {
                 if (sup[i]) continue;
+
                 kept.Add(dets[i]);
+
                 for (int j = i + 1; j < dets.Count; j++)
                 {
                     if (sup[j] || dets[i].classId != dets[j].classId) continue;
-                    Rect  a = dets[i].boundingBox, b = dets[j].boundingBox;
+
+                    Rect a = dets[i].boundingBox;
+                    Rect b = dets[j].boundingBox;
+
                     float x1 = Mathf.Max(a.xMin, b.xMin), y1 = Mathf.Max(a.yMin, b.yMin);
                     float x2 = Mathf.Min(a.xMax, b.xMax), y2 = Mathf.Min(a.yMax, b.yMax);
                     float inter = Mathf.Max(0, x2 - x1) * Mathf.Max(0, y2 - y1);
                     float uni   = a.width * a.height + b.width * b.height - inter;
-                    if (uni > 0 && inter / uni > nmsThreshold) sup[j] = true;
+
+                    if (uni > 0 && inter / uni > nmsThreshold)
+                        sup[j] = true;
                 }
             }
+
             return kept;
         }
 
@@ -406,40 +483,50 @@ namespace NomadGo.Vision
             new Rect(0.10f, 0.55f, 0.22f, 0.28f), new Rect(0.55f, 0.55f, 0.22f, 0.28f),
             new Rect(0.33f, 0.35f, 0.20f, 0.26f),
         };
+
         private static readonly int[] _demoClassIds = { 39, 41, 45, 47, 46 };
 
         private List<DetectionResult> GenerateDemoDetections()
         {
             lastInferenceMs = 2.5f;
-            var res  = new List<DetectionResult>();
+
+            var res = new List<DetectionResult>();
             int hide = UnityEngine.Random.Range(0, 3);
             var hideSet = new HashSet<int>();
+
             while (hideSet.Count < hide)
                 hideSet.Add(UnityEngine.Random.Range(0, _anchors.Length));
 
             for (int i = 0; i < _anchors.Length; i++)
             {
                 if (hideSet.Contains(i)) continue;
-                Rect   a   = _anchors[i]; float j = 0.008f;
-                int    cls = i < _demoClassIds.Length ? _demoClassIds[i] : 39;
+
+                Rect a = _anchors[i];
+                float j = 0.008f;
+                int cls = i < _demoClassIds.Length ? _demoClassIds[i] : 39;
                 string lbl = (labels != null && cls < labels.Length) ? labels[cls] : "item";
-                res.Add(new DetectionResult(cls, lbl, 0.78f + UnityEngine.Random.value * 0.18f,
+
+                res.Add(new DetectionResult(
+                    cls,
+                    lbl,
+                    0.78f + UnityEngine.Random.value * 0.18f,
                     new Rect(
                         Mathf.Clamp01(a.x + (UnityEngine.Random.value - .5f) * j),
                         Mathf.Clamp01(a.y + (UnityEngine.Random.value - .5f) * j),
                         Mathf.Clamp(a.width  + (UnityEngine.Random.value - .5f) * j, 0.05f, 0.45f),
-                        Mathf.Clamp(a.height + (UnityEngine.Random.value - .5f) * j, 0.05f, 0.45f))));
+                        Mathf.Clamp(a.height + (UnityEngine.Random.value - .5f) * j, 0.05f, 0.45f)
+                    )
+                ));
             }
+
             return res;
         }
 
         private void OnDestroy()
         {
-#if UNITY_BARRACUDA
-            barracudaWorker?.Dispose();
-            barracudaModel = null;
-            barracudaReady = false;
-#endif
+            ortSession?.Dispose();
+            ortSession = null;
+            ortReady = false;
         }
     }
 }
