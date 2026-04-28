@@ -8,6 +8,7 @@ using UnityEngine.Networking;
 
 #if UNITY_BARRACUDA
 using Unity.Barracuda;
+using Unity.Barracuda.ONNX;
 #endif
 
 namespace NomadGo.Vision
