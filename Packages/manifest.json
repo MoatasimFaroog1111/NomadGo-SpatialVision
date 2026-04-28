@@ -1,5 +1,15 @@
 {
+  "scopedRegistries": [
+    {
+      "name": "NPM",
+      "url": "https://registry.npmjs.com",
+      "scopes": [
+        "com.github.asus4"
+      ]
+    }
+  ],
   "dependencies": {
+    "com.github.asus4.onnxruntime": "0.4.3",
     "com.unity.xr.arcore": "5.1.5",
     "com.unity.xr.arfoundation": "5.1.5",
     "com.unity.xr.management": "4.4.0",
