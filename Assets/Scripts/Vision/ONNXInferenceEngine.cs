@@ -219,13 +219,18 @@ namespace NomadGo.Vision
                 yield break;
             }
 
-            // FIX: ModelLoader.Load is synchronous and blocks main thread.
-            // For ~12MB it takes ~1-3s on mobile — acceptable since it’s a one-time startup cost.
-            // If you need async loading, use a background thread + UnityMainThreadDispatcher.
+            // FIX: ModelLoader.Load(byte[]) reads Barracuda binary (.nn) format, NOT ONNX.
+            // yolov8n.onnx is a standard ONNX protobuf file.
+            // CORRECT approach: use ONNXModelConverter.Convert(byte[]) which parses ONNX
+            // protobuf and returns a Barracuda Model directly — no pre-conversion needed.
             try
             {
-                Debug.Log($"[ONNXEngine] Parsing model ({bytes.Length / 1024 / 1024f:F1} MB)...");
-                barracudaModel = ModelLoader.Load(bytes, verbose: false);
+                Debug.Log($"[ONNXEngine] Parsing ONNX model ({bytes.Length / 1024 / 1024f:F1} MB)...");
+                var onnxConverter = new ONNXModelConverter(
+                    optimizeModel: true,
+                    treatErrorsAsWarnings: false,
+                    forceArbitraryBatchSize: true);
+                barracudaModel = onnxConverter.Convert(bytes);
 
                 // FIX: WorkerFactory.Type.CSharpBurst requires Burst package.
                 // On Android IL2CPP, use ComputePrecompiled for GPU or CSharpBurst for CPU.
