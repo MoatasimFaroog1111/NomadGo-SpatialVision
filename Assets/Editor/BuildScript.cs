@@ -33,7 +33,10 @@ public class BuildScript
         UnityEditor.Android.AndroidExternalToolsSettings.jdkRootPath = jdkPath;
         UnityEditor.Android.AndroidExternalToolsSettings.sdkRootPath = androidSdk;
         UnityEditor.Android.AndroidExternalToolsSettings.ndkRootPath = ndkPath;
-        UnityEditor.Android.AndroidExternalToolsSettings.gradlePath = "";
+        // Gradle 7.2 path - required for Unity 2022 Android builds
+        string gradlePath = "/home/ubuntu/gradle-7.2/gradle-7.2";
+        UnityEditor.Android.AndroidExternalToolsSettings.gradlePath = gradlePath;
+        Debug.Log($"[BuildScript] Gradle: {gradlePath}");
 
         Debug.Log($"[BuildScript] SDK:  {androidSdk}");
         Debug.Log($"[BuildScript] NDK:  {ndkPath}");
@@ -53,6 +56,10 @@ public class BuildScript
         PlayerSettings.Android.targetArchitectures = AndroidArchitecture.ARM64;
         PlayerSettings.SetManagedStrippingLevel(BuildTargetGroup.Android, ManagedStrippingLevel.Minimal);
 
+        // Disable Burst AOT compilation to avoid hang in headless build
+        // Burst will still work at runtime via the pre-compiled fallback path
+        PlayerSettings.SetAdditionalIl2CppArgs("--disable-burst");
+
         // ---- Build Options ----
         BuildPlayerOptions opts = new BuildPlayerOptions
         {
@@ -62,7 +69,7 @@ public class BuildScript
             options = BuildOptions.None
         };
 
-        Debug.Log("[BuildScript] Starting Android build...");
+        Debug.Log("[BuildScript] Starting Android build (Burst AOT disabled for headless)...");
         BuildReport  report  = BuildPipeline.BuildPlayer(opts);
         BuildSummary summary = report.summary;
 
