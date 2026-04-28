@@ -662,7 +662,7 @@ PlayerSettings:
   webGLMemoryGeometricGrowthCap: 96
   webGLPowerPreference: 2
   scriptingDefineSymbols:
-    Android: UNITY_AR;NOMADGO_SPATIAL;UNITY_BARRACUDA
+    Android: UNITY_AR;NOMADGO_SPATIAL;
     Standalone: UNITY_STANDALONE
   additionalCompilerArguments: {}
   platformArchitecture: {}
