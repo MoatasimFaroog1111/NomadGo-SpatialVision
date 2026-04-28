@@ -677,7 +677,7 @@ PlayerSettings:
   suppressCommonWarnings: 1
   allowUnsafeCode: 0
   useDeterministicCompilation: 1
-  additionalIl2CppArgs: 
+  additionalIl2CppArgs: --disable-burst
   scriptingRuntimeVersion: 1
   gcIncremental: 1
   gcWBarrierValidation: 0

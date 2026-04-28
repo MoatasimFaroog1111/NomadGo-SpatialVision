@@ -1,0 +1,10 @@
+<linker>
+    <!-- Preserve Barracuda runtime assemblies -->
+    <assembly fullname="Unity.Barracuda" preserve="all"/>
+    <assembly fullname="Unity.Barracuda.ONNX" preserve="all"/>
+    <assembly fullname="Unity.Barracuda.BurstBLAS" preserve="all"/>
+    <!-- Preserve Google Protobuf used by ONNX converter -->
+    <assembly fullname="Google.Protobuf" preserve="all"/>
+    <!-- Preserve NomadGo scripts -->
+    <assembly fullname="Assembly-CSharp" preserve="all"/>
+</linker>
