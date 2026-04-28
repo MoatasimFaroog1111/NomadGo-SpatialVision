@@ -269,7 +269,7 @@ namespace NomadGo.Vision
 
             DenseTensor<float> inputTensor = TextureToNCHWTensor(frame);
 
-            using (var input = NamedOnnxValue.CreateFromTensor(ortInputName, inputTensor))
+            var input = NamedOnnxValue.CreateFromTensor(ortInputName, inputTensor);
             using (var results = ortSession.Run(new[] { input }))
             {
                 sw.Stop();
