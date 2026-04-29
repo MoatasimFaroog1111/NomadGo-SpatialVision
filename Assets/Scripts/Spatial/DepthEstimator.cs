@@ -1,12 +1,16 @@
 using UnityEngine;
+
+#if UNITY_AR
 using UnityEngine.XR.ARFoundation;
-using Unity.Collections;
+#endif
 
 namespace NomadGo.Spatial
 {
     public class DepthEstimator : MonoBehaviour
     {
+#if UNITY_AR
         [SerializeField] private AROcclusionManager occlusionManager;
+#endif
 
         private bool depthAvailable = false;
 
@@ -14,14 +18,22 @@ namespace NomadGo.Spatial
 
         private void Update()
         {
-            if (occlusionManager == null) return;
+#if UNITY_AR
+            if (occlusionManager == null)
+            {
+                depthAvailable = false;
+                return;
+            }
 
-            var envDepth = occlusionManager.environmentDepthTexture;
-            depthAvailable = envDepth != null;
+            depthAvailable = occlusionManager.environmentDepthTexture != null;
+#else
+            depthAvailable = false;
+#endif
         }
 
         public float EstimateDepthAtScreenPoint(Vector2 normalizedScreenPoint)
         {
+#if UNITY_AR
             if (occlusionManager == null || !depthAvailable)
             {
                 return -1f;
@@ -33,14 +45,18 @@ namespace NomadGo.Spatial
             int x = Mathf.Clamp((int)(normalizedScreenPoint.x * depthTexture.width), 0, depthTexture.width - 1);
             int y = Mathf.Clamp((int)(normalizedScreenPoint.y * depthTexture.height), 0, depthTexture.height - 1);
 
-            var pixels = depthTexture.GetPixels();
-            if (pixels == null || pixels.Length == 0) return -1f;
-
-            int index = y * depthTexture.width + x;
-            if (index < 0 || index >= pixels.Length) return -1f;
-
-            float depth = pixels[index].r;
-            return depth;
+            try
+            {
+                Color pixel = depthTexture.GetPixel(x, y);
+                return pixel.r;
+            }
+            catch
+            {
+                return -1f;
+            }
+#else
+            return -1f;
+#endif
         }
 
         public float EstimateDepthAtBoundingBox(Rect boundingBox)
@@ -59,8 +75,17 @@ namespace NomadGo.Spatial
             float avgDepth = centerDepth;
             int count = 1;
 
-            if (topDepth > 0) { avgDepth += topDepth; count++; }
-            if (bottomDepth > 0) { avgDepth += bottomDepth; count++; }
+            if (topDepth > 0)
+            {
+                avgDepth += topDepth;
+                count++;
+            }
+
+            if (bottomDepth > 0)
+            {
+                avgDepth += bottomDepth;
+                count++;
+            }
 
             return avgDepth / count;
         }
