@@ -13,14 +13,12 @@
         android:xlargeScreens="true"
         android:anyDensity="true"/>
 
-    <!-- CAMERA: required for AR scanning -->
+    <!-- CAMERA -->
     <uses-feature android:name="android.hardware.camera" android:required="true"/>
     <uses-feature android:name="android.hardware.camera.autofocus" android:required="false"/>
-    <!-- FIX: was android:required="false" (optional) which allows install on non-AR devices
-         but ARCore features won't work. Set to "true" so only ARCore-capable devices
-         can install this app from the Play Store. -->
     <uses-feature android:name="android.hardware.camera.ar" android:required="true"/>
 
+    <!-- PERMISSIONS -->
     <uses-permission android:name="android.permission.CAMERA"/>
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
@@ -32,6 +30,13 @@
         android:hardwareAccelerated="true"
         android:extractNativeLibs="true">
 
+        <!-- 🔥 FILE PICKER ACTIVITY (المهم) -->
+        <activity
+            android:name="com.nomadgo.spatialvision.CatalogFilePickerActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!-- UNITY MAIN ACTIVITY -->
         <activity
             android:name="com.unity3d.player.UnityPlayerActivity"
             android:label="@string/app_name"
@@ -39,17 +44,16 @@
             android:launchMode="singleTask"
             android:configChanges="mcc|mnc|locale|touchscreen|keyboard|keyboardHidden|navigation|orientation|screenLayout|uiMode|screenSize|smallestScreenSize|fontScale|layoutDirection|density"
             android:exported="true">
+
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
+
             <meta-data android:name="unityplayer.UnityActivity" android:value="true"/>
         </activity>
 
-        <!-- FIX: was "optional" — changed to "required" to match uses-feature above.
-             "required" means app will only appear on ARCore-supported devices in Play Store.
-             If you want to support non-AR devices too, revert both to "optional"
-             and add simulation-mode fallback logic. -->
+        <!-- ARCore -->
         <meta-data android:name="com.google.ar.core" android:value="required"/>
 
     </application>
