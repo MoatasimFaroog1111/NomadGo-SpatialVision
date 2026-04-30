@@ -20,7 +20,7 @@
     "row_limit": 6,
     "iou_threshold": 0.4,
     "tracking_max_age_frames": 15,
-    "min_detection_confidence": 0.45
+    "min_detection_confidence": 0.20
   },
   "spatial": {
     "enable_depth_refinement": false,
