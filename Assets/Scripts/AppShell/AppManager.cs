@@ -88,7 +88,7 @@ namespace NomadGo.AppShell
                     labels_path = "Models/labels.txt",
                     input_width = 640,
                     input_height = 640,
-                    confidence_threshold = 0.45f,
+                    confidence_threshold = 0.20f,
                     nms_threshold = 0.5f,
                     max_detections = 100
                 },
