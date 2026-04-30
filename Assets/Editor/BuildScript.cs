@@ -58,7 +58,6 @@ public class BuildScript
 
         // Disable Burst AOT compilation to avoid hang in headless build
         // Burst will still work at runtime via the pre-compiled fallback path
-        PlayerSettings.SetAdditionalIl2CppArgs("--disable-burst");
 
         // ---- Build Options ----
         BuildPlayerOptions opts = new BuildPlayerOptions
