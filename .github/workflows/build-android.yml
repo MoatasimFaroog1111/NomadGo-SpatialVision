@@ -7,7 +7,6 @@ on:
   workflow_dispatch: {}
 
 jobs:
-  # ── Unity Android build ───────────────────────────────────────────────────────────────────
   buildForAndroid:
     name: Build for Android (Release Signed)
     runs-on: ubuntu-latest
@@ -19,8 +18,7 @@ jobs:
         with:
           fetch-depth: 0
           lfs: true
-      # FIX: was pinned to @main (floating ref — breaks silently on upstream changes)
-      # Pinned to @v1.0.0 which is the latest stable release
+
       - name: Free Disk Space
         uses: jlumbroso/free-disk-space@v1.3.1
         with:
@@ -47,14 +45,11 @@ jobs:
           androidKeystorePass:   ${{ secrets.ANDROID_KEYSTORE_PASS }}
           androidKeyaliasName:   ${{ secrets.ANDROID_KEYALIAS_NAME }}
           androidKeyaliasPass:   ${{ secrets.ANDROID_KEYALIAS_PASS }}
-          # FIX: was only UNITY_BARRACUDA — added UNITY_AR so ARController.cs
-          # activates the real ARFoundation code paths (was stuck in simulation mode)
           customParameters: -customDefines UNITY_AR;NOMADGO_SPATIAL
           buildName: NomadGo-SpatialVision
           versioning: Semantic
           allowDirtyBuild: true
 
-      # FIX: added explicit failure notification so build failures are visible
       - name: Notify on Build Failure
         if: failure()
         run: |
@@ -72,15 +67,13 @@ jobs:
           APK=$(find build/Android -name "*.apk" | head -1)
           echo "Source APK: $APK ($(du -sh $APK | cut -f1))"
 
-          # Decode keystore
           echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.keystore
 
-          # Install tools
-          sudo apt-get install -y zipalign apksigner 2>/dev/null || true
+          sudo apt-get update
+          sudo apt-get install -y zipalign apksigner
 
-          # Step 1: Patch glEsVersion in Manifest (3.0 -> 2.0)
           python3 << 'PYEOF'
-          import zipfile, struct, os, glob
+          import zipfile, struct, glob
 
           apk = glob.glob('build/Android/*.apk')[0]
           print(f"Patching: {apk}")
@@ -89,18 +82,18 @@ jobs:
               manifest = bytearray(z.read('AndroidManifest.xml'))
 
           patched = 0
-          for i in range(0, len(manifest)-8, 4):
+          for i in range(0, len(manifest) - 8, 4):
               v = struct.unpack_from('<I', manifest, i)[0]
               if v == 0x00030000 and i >= 4:
-                  p = struct.unpack_from('<I', manifest, i-4)[0]
+                  p = struct.unpack_from('<I', manifest, i - 4)[0]
                   if p == 0x11000008:
                       struct.pack_into('<I', manifest, i, 0x00020000)
                       patched += 1
-                      print(f'  Patched glEsVersion at offset {i}')
+                      print(f'Patched glEsVersion at offset {i}')
 
           print(f'Total patches: {patched}')
           if patched == 0:
-              print('INFO: glEsVersion already 2.0 in binary manifest (or not found) — no patch needed.')
+              print('INFO: glEsVersion already 2.0 or not found. No patch needed.')
 
           with zipfile.ZipFile(apk, 'r') as zin:
               with zipfile.ZipFile('/tmp/patched.apk', 'w') as zout:
@@ -113,23 +106,20 @@ jobs:
           print('Repacked to /tmp/patched.apk')
           PYEOF
 
-          # Step 2: Zipalign
-          zipalign -f -p 4 /tmp/patched.apk /tmp/aligned.apk && echo "Aligned OK" || cp /tmp/patched.apk /tmp/aligned.apk
+          zipalign -f -p 4 /tmp/patched.apk /tmp/aligned.apk
 
-          # Step 3: Re-sign
           apksigner sign \
             --ks /tmp/release.keystore \
             --ks-pass "pass:${{ secrets.ANDROID_KEYSTORE_PASS }}" \
             --ks-key-alias "${{ secrets.ANDROID_KEYALIAS_NAME }}" \
             --key-pass "pass:${{ secrets.ANDROID_KEYALIAS_PASS }}" \
             --out /tmp/final.apk \
-            /tmp/aligned.apk && echo "Signed OK" || cp /tmp/aligned.apk /tmp/final.apk
+            /tmp/aligned.apk
 
-          # Step 4: Copy back
           sudo cp /tmp/final.apk "$APK"
           sudo chmod 644 "$APK"
 
-          apksigner verify "$APK" && echo "Verification PASSED" || echo "Verify warning"
+          apksigner verify "$APK"
           echo "Final: $(ls -lh $APK)"
 
       - name: Upload Signed APK Artifact
@@ -146,20 +136,19 @@ jobs:
           name: "NomadGo SpatialVision v${{ github.run_number }}"
           body: |
             ## NomadGo SpatialVision - Release Build
-            - Signed Release APK (arm64-v8a)
+            - Signed Release APK
             - Min SDK: Android 7.0 (API 24)
             - Target SDK: Android 14 (API 34)
-            - Compatible with Moto G84 5G (Android 15)
-            - OpenGL ES 2.0 (patched for maximum compatibility)
+            - Compatible with Moto G84 5G
+            - OpenGL ES 2.0 patched for maximum compatibility
             - ARCore required
-            - Barracuda ONNX inference enabled (real AI)
+            - ONNX Runtime inference enabled
           files: build/Android/*.apk
           draft: false
           prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-  # ── Firebase Test Lab - Robo Test on Real Device ────────────────────────────
   testOnFirebase:
     name: Test on Firebase Test Lab
     needs: buildForAndroid
@@ -212,5 +201,5 @@ jobs:
             echo "❌ **Robo test had issues** - Check Firebase console for details" >> $GITHUB_STEP_SUMMARY
           fi
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "View full results in [Firebase Console](https://console.firebase.google.com/project/${{ secrets.FIREBASE_PROJECT_ID }}/testlab)" >> $GITHUB_STEP_SUMMARY
+          echo "View full results in Firebase Console" >> $GITHUB_STEP_SUMMARY
           cat /tmp/ftl-output.txt >> $GITHUB_STEP_SUMMARY || true
