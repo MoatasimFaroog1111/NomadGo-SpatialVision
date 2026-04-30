@@ -59,7 +59,7 @@ jobs:
           androidKeyaliasPass:   ${{ secrets.ANDROID_KEYALIAS_PASS }}
           # FIX: was only UNITY_BARRACUDA — added UNITY_AR so ARController.cs
           # activates the real ARFoundation code paths (was stuck in simulation mode)
-          customParameters: -customDefines UNITY_BARRACUDA;UNITY_AR;NOMADGO_SPATIAL
+          customParameters: -customDefines UNITY_AR;NOMADGO_SPATIAL
           buildName: NomadGo-SpatialVision
           versioning: Semantic
           allowDirtyBuild: true
