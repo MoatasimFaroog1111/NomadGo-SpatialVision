@@ -19,16 +19,6 @@ jobs:
         with:
           fetch-depth: 0
           lfs: true
-
-      - name: Cache Unity Library
-        uses: actions/cache@v4
-        with:
-          path: Library
-          key: Library-Android-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
-          restore-keys: |
-            Library-Android-
-            Library-
-
       # FIX: was pinned to @main (floating ref — breaks silently on upstream changes)
       # Pinned to @v1.0.0 which is the latest stable release
       - name: Free Disk Space
