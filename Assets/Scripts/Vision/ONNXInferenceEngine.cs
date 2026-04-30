@@ -26,11 +26,10 @@ namespace NomadGo.Vision
         private bool  isLoading       = false;
         private float lastInferenceMs = 0f;
 
-        private const int   MAX_RETRIES         = 3;
+        private const int   MAX_RETRIES = 3;
         private const float RETRY_DELAY_SECONDS = 2f;
         private const int   REQUEST_TIMEOUT_SECONDS = 120;
 
-        // ONNX Runtime
         private InferenceSession ortSession;
         private string ortInputName = "images";
         private string ortOutputName = "output0";
@@ -188,8 +187,8 @@ namespace NomadGo.Vision
                         else
                         {
                             Debug.LogError($"[ONNXEngine] All {MAX_RETRIES} attempts failed. Last error: {req.error}");
-                            Debug.LogError($"[ONNXEngine] CRITICAL: ONNX model could not be loaded → falling back to DEMO mode.");
-                            Debug.LogError($"[ONNXEngine] Verify the file exists at: Assets/StreamingAssets/Models/yolov8n.onnx");
+                            Debug.LogError("[ONNXEngine] CRITICAL: ONNX model could not be loaded → falling back to DEMO mode.");
+                            Debug.LogError("[ONNXEngine] Verify the file exists at: Assets/StreamingAssets/Models/yolov8n.onnx");
 
                             isLoading = false;
                             ActivateDemoMode();
@@ -202,7 +201,7 @@ namespace NomadGo.Vision
             if (!File.Exists(effectivePath))
             {
                 Debug.LogError($"[ONNXEngine] File not found: {effectivePath} → DEMO mode.");
-                Debug.LogError($"[ONNXEngine] Place yolov8n.onnx at: Assets/StreamingAssets/Models/yolov8n.onnx");
+                Debug.LogError("[ONNXEngine] Place yolov8n.onnx at: Assets/StreamingAssets/Models/yolov8n.onnx");
 
                 isLoading = false;
                 ActivateDemoMode();
@@ -362,10 +361,11 @@ namespace NomadGo.Vision
                     float bh = output[0, 3, a] / inputHeight;
 
                     string lbl = (labels != null && maxCls < labels.Length) ? labels[maxCls] : $"cls{maxCls}";
+                    string finalLabel = ResolveClientLabel(lbl, maxConf);
 
                     results.Add(new DetectionResult(
                         maxCls,
-                        lbl,
+                        finalLabel,
                         maxConf,
                         new Rect(
                             Mathf.Clamp01(cx - bw * 0.5f),
@@ -412,10 +412,11 @@ namespace NomadGo.Vision
                     float bh = output[0, a, 3] / inputHeight;
 
                     string lbl = (labels != null && maxCls < labels.Length) ? labels[maxCls] : $"cls{maxCls}";
+                    string finalLabel = ResolveClientLabel(lbl, maxConf);
 
                     results.Add(new DetectionResult(
                         maxCls,
-                        lbl,
+                        finalLabel,
                         maxConf,
                         new Rect(
                             Mathf.Clamp01(cx - bw * 0.5f),
@@ -433,10 +434,25 @@ namespace NomadGo.Vision
             return results;
         }
 
+        private string ResolveClientLabel(string aiLabel, float confidence)
+        {
+            try
+            {
+                return ClientItemResolver.ResolveLabel(aiLabel, confidence);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[ONNXEngine] ClientItemResolver failed, using AI label. Error: {ex.Message}");
+                return aiLabel;
+            }
+        }
+
         public static float ComputeIOU(Rect a, Rect b)
         {
-            float x1    = Mathf.Max(a.xMin, b.xMin), y1 = Mathf.Max(a.yMin, b.yMin);
-            float x2    = Mathf.Min(a.xMax, b.xMax), y2 = Mathf.Min(a.yMax, b.yMax);
+            float x1    = Mathf.Max(a.xMin, b.xMin);
+            float y1    = Mathf.Max(a.yMin, b.yMin);
+            float x2    = Mathf.Min(a.xMax, b.xMax);
+            float y2    = Mathf.Min(a.yMax, b.yMax);
             float inter = Mathf.Max(0, x2 - x1) * Mathf.Max(0, y2 - y1);
             float uni   = a.width * a.height + b.width * b.height - inter;
 
@@ -463,8 +479,11 @@ namespace NomadGo.Vision
                     Rect a = dets[i].boundingBox;
                     Rect b = dets[j].boundingBox;
 
-                    float x1 = Mathf.Max(a.xMin, b.xMin), y1 = Mathf.Max(a.yMin, b.yMin);
-                    float x2 = Mathf.Min(a.xMax, b.xMax), y2 = Mathf.Min(a.yMax, b.yMax);
+                    float x1 = Mathf.Max(a.xMin, b.xMin);
+                    float y1 = Mathf.Max(a.yMin, b.yMin);
+                    float x2 = Mathf.Min(a.xMax, b.xMax);
+                    float y2 = Mathf.Min(a.yMax, b.yMax);
+
                     float inter = Mathf.Max(0, x2 - x1) * Mathf.Max(0, y2 - y1);
                     float uni   = a.width * a.height + b.width * b.height - inter;
 
@@ -479,8 +498,10 @@ namespace NomadGo.Vision
         // —— Demo mode fallback ——
         private static readonly Rect[] _anchors =
         {
-            new Rect(0.10f, 0.15f, 0.22f, 0.28f), new Rect(0.55f, 0.15f, 0.22f, 0.28f),
-            new Rect(0.10f, 0.55f, 0.22f, 0.28f), new Rect(0.55f, 0.55f, 0.22f, 0.28f),
+            new Rect(0.10f, 0.15f, 0.22f, 0.28f),
+            new Rect(0.55f, 0.15f, 0.22f, 0.28f),
+            new Rect(0.10f, 0.55f, 0.22f, 0.28f),
+            new Rect(0.55f, 0.55f, 0.22f, 0.28f),
             new Rect(0.33f, 0.35f, 0.20f, 0.26f),
         };
 
