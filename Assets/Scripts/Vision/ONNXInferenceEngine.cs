@@ -16,7 +16,7 @@ namespace NomadGo.Vision
         private string   modelPath;
         private int      inputWidth           = 640;
         private int      inputHeight          = 640;
-        private float    confidenceThreshold  = 0.45f;
+        private float    confidenceThreshold  = 0.20f;
         private float    nmsThreshold         = 0.5f;
         private int      maxDetections        = 100;
         private string[] labels;
