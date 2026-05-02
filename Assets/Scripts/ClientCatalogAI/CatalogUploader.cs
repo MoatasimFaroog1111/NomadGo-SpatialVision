@@ -15,12 +15,13 @@ public class CatalogUploader : MonoBehaviour
 #if UNITY_ANDROID && !UNITY_EDITOR
         using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
         using (var activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity"))
-        using (var intent = new AndroidJavaObject("android.content.Intent", activity, new AndroidJavaClass("com.nomadgo.spatialvision.CatalogFilePickerActivity")))
+        using (var pickerClass = new AndroidJavaClass("com.nomadgo.spatialvision.CatalogFilePickerActivity"))
+        using (var intent = new AndroidJavaObject("android.content.Intent", activity, pickerClass))
         {
             activity.Call("startActivity", intent);
         }
 #else
-        Debug.Log("[CatalogUploader] Android file picker works only on device.");
+        Debug.Log("[CatalogUploader] File picker works only on Android device.");
 #endif
     }
 
