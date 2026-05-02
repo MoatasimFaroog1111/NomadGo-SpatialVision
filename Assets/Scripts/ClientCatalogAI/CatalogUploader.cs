@@ -27,10 +27,19 @@ public class CatalogUploader : MonoBehaviour
 
     public void OnCatalogImported(string message)
     {
-        Debug.Log("[CatalogUploader] " + message);
+        Debug.Log("[CatalogUploader] SUCCESS: " + message);
+
+        string path = Path.Combine(Application.persistentDataPath, "client_catalog.json");
+        Debug.Log("[CatalogUploader] File exists: " + File.Exists(path));
 
         if (ClientCatalogManager.Instance != null)
+        {
             ClientCatalogManager.Instance.Load();
+        }
+        else
+        {
+            Debug.LogError("[CatalogUploader] Manager is NULL");
+        }
     }
 
     public void OnCatalogImportFailed(string message)
