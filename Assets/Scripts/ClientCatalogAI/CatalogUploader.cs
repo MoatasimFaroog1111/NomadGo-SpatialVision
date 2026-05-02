@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using UnityEngine;
 
@@ -21,43 +22,54 @@ public class CatalogUploader : MonoBehaviour
             activity.Call("startActivity", intent);
         }
 #else
-        Debug.Log("[CatalogUploader] File picker works only on Android device.");
-        NotifyUI(null, "File picker works only after building and installing the Android APK.");
+        NotifyUI(null, "File picker works only after building Android APK.");
 #endif
     }
 
-    public void OnCatalogImported(string message)
+    public void OnCatalogImported(string sourcePath)
     {
-        Debug.Log("[CatalogUploader] SUCCESS: " + message);
-
-        string path = Path.Combine(Application.persistentDataPath, "client_catalog.json");
-        bool exists = File.Exists(path);
-
-        Debug.Log("[CatalogUploader] File exists: " + exists + " | " + path);
-
-        if (!exists)
+        try
         {
-            NotifyUI(false, "Upload failed: file was not saved inside the app storage.");
-            return;
-        }
+            Debug.Log("[CatalogUploader] Imported path/message: " + sourcePath);
 
-        if (ClientCatalogManager.Instance != null)
-        {
-            ClientCatalogManager.Instance.Load();
+            string destPath = Path.Combine(Application.persistentDataPath, "client_catalog.json");
 
-            if (ClientCatalogManager.Instance.IsLoaded)
+            if (!string.IsNullOrEmpty(sourcePath) && File.Exists(sourcePath))
             {
-                NotifyUI(true, "Upload successful — products loaded: " + ClientCatalogManager.Instance.ItemsCount);
+                File.Copy(sourcePath, destPath, true);
+            }
+
+            if (!File.Exists(destPath))
+            {
+                NotifyUI(false, "Upload failed: file was not saved inside the app storage.");
+                return;
+            }
+
+            Debug.Log("[CatalogUploader] Saved catalog to: " + destPath);
+
+            var manager = ClientCatalogManager.Instance ?? FindObjectOfType<ClientCatalogManager>();
+
+            if (manager == null)
+            {
+                NotifyUI(false, "Upload failed: catalog manager not found.");
+                return;
+            }
+
+            manager.Load();
+
+            if (manager.IsLoaded)
+            {
+                NotifyUI(true, "Upload successful — products loaded: " + manager.ItemsCount);
             }
             else
             {
                 NotifyUI(false, "Upload completed, but file format is invalid or contains no products.");
             }
         }
-        else
+        catch (Exception ex)
         {
-            Debug.LogError("[CatalogUploader] Manager is NULL");
-            NotifyUI(false, "Upload failed: catalog manager not found.");
+            Debug.LogError("[CatalogUploader] Upload error: " + ex);
+            NotifyUI(false, "Upload failed: " + ex.Message);
         }
     }
 
@@ -69,25 +81,32 @@ public class CatalogUploader : MonoBehaviour
 
     public void ImportFromPath(string sourcePath)
     {
-        if (!File.Exists(sourcePath))
+        try
         {
-            Debug.LogError("[CatalogUploader] File not found: " + sourcePath);
-            NotifyUI(false, "Upload failed: file not found.");
-            return;
+            if (!File.Exists(sourcePath))
+            {
+                NotifyUI(false, "Upload failed: file not found.");
+                return;
+            }
+
+            string destPath = Path.Combine(Application.persistentDataPath, "client_catalog.json");
+            File.Copy(sourcePath, destPath, true);
+
+            var manager = ClientCatalogManager.Instance ?? FindObjectOfType<ClientCatalogManager>();
+            if (manager != null)
+            {
+                manager.Load();
+                NotifyUI(
+                    manager.IsLoaded,
+                    manager.IsLoaded
+                        ? "Upload successful — products loaded: " + manager.ItemsCount
+                        : "Upload completed, but file format is invalid or contains no products."
+                );
+            }
         }
-
-        string dest = Path.Combine(Application.persistentDataPath, "client_catalog.json");
-        File.Copy(sourcePath, dest, true);
-
-        Debug.Log("[CatalogUploader] Catalog uploaded to: " + dest);
-
-        if (ClientCatalogManager.Instance != null)
+        catch (Exception ex)
         {
-            ClientCatalogManager.Instance.Load();
-            NotifyUI(ClientCatalogManager.Instance.IsLoaded,
-                ClientCatalogManager.Instance.IsLoaded
-                    ? "Upload successful — products loaded: " + ClientCatalogManager.Instance.ItemsCount
-                    : "Upload completed, but file format is invalid or contains no products.");
+            NotifyUI(false, "Upload failed: " + ex.Message);
         }
     }
 
