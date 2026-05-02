@@ -288,10 +288,10 @@ namespace NomadGo.AppShell
             boxLabelStyle = new GUIStyle();
             boxLabelStyle.normal.background  = labelBgTex;
             boxLabelStyle.normal.textColor   = Color.white;
-            boxLabelStyle.fontSize = Mathf.RoundToInt(Screen.height * 0.013f);
+            boxLabelStyle.fontSize = Mathf.RoundToInt(Screen.height * 0.022f);
             boxLabelStyle.alignment = TextAnchor.MiddleLeft;
             boxLabelStyle.padding  = new RectOffset(4, 4, 2, 2);
-            boxLabelStyle.wordWrap = false;
+            boxLabelStyle.wordWrap = true;
 
             boxStylesInit = true;
         }
@@ -461,7 +461,7 @@ namespace NomadGo.AppShell
             InitBoxStyles();
 
             float thick = Mathf.Max(3f, W * 0.004f);
-            float labelH = Mathf.Max(28f, H * 0.025f);
+            float labelH = Mathf.Max(70f, H * 0.075f);
 
             foreach (var det in latestDetections)
             {
@@ -485,7 +485,10 @@ namespace NomadGo.AppShell
                 GUI.Box(new Rect(sx + sw - thick, sy, thick, sh), GUIContent.none, boxStyle);
 
                 string lbl = $" {det.label} {det.confidence:P0}";
-                GUI.Label(new Rect(sx, sy - labelH, Mathf.Min(sw, W * 0.55f), labelH), lbl, boxLabelStyle);
+                float labelW = Mathf.Min(Mathf.Max(sw, W * 0.45f), W * 0.85f);
+                float labelY = Mathf.Max(statusHeight + 8f, sy - labelH);
+
+                GUI.Label(new Rect(sx, labelY, labelW, labelH), lbl, boxLabelStyle);
             }
         }
 
