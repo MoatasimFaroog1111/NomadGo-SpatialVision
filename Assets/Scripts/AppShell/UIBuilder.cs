@@ -10,19 +10,17 @@ namespace NomadGo.AppShell
         private string statusMessage = "NomadGo Ready — Press Start Scan";
         private string reportsContent = "No sessions recorded yet.\nStart a scan to create a report.";
 
-        // ---- Model download UI state ----
         private bool   modelDownloadInProgress = false;
         private float  modelDownloadProgress   = 0f;
         private bool   modelUpdateAvailable    = false;
         private bool   modelJustDownloaded     = false;
         private string modelIndicatorText      = "";
-        // Cached style for the model indicator pill
+
         private GUIStyle modelPillStyle;
         private GUIStyle progressBarBgStyle;
         private GUIStyle progressBarFillStyle;
         private bool     modelStylesInit = false;
 
-        // Live detection data
         private int detectedTotal = 0;
         private Dictionary<string, int> detectedByLabel = new Dictionary<string, int>();
         private List<Vision.DetectionResult> latestDetections = new List<Vision.DetectionResult>();
@@ -35,19 +33,6 @@ namespace NomadGo.AppShell
 
         private Dictionary<Color, Texture2D> texCache = new Dictionary<Color, Texture2D>();
 
-        private Texture2D GetCachedTex(Color c)
-        {
-            if (!texCache.TryGetValue(c, out var t) || t == null)
-            {
-                t = new Texture2D(1, 1);
-                t.SetPixel(0, 0, c);
-                t.Apply();
-                texCache[c] = t;
-            }
-            return t;
-        }
-
-        // OnGUI styles
         private GUIStyle btnStyle;
         private GUIStyle statusStyle;
         private GUIStyle panelStyle;
@@ -60,20 +45,49 @@ namespace NomadGo.AppShell
         private float btnMargin;
         private float statusHeight;
 
+        private Texture2D GetCachedTex(Color c)
+        {
+            if (!texCache.TryGetValue(c, out var t) || t == null)
+            {
+                t = new Texture2D(1, 1);
+                t.SetPixel(0, 0, c);
+                t.Apply();
+                texCache[c] = t;
+            }
+
+            return t;
+        }
+
         private void Start()
         {
             safeArea = Screen.safeArea;
             SubscribeModelDownloaderEvents();
+            EnsureCatalogSystem();
+        }
+
+        private void EnsureCatalogSystem()
+        {
+            var existing = GameObject.Find("CatalogSystem");
+            if (existing == null)
+                existing = new GameObject("CatalogSystem");
+
+            if (existing.GetComponent<global::ClientCatalogManager>() == null)
+                existing.AddComponent<global::ClientCatalogManager>();
+
+            if (existing.GetComponent<global::CatalogUploader>() == null)
+                existing.AddComponent<global::CatalogUploader>();
+
+            DontDestroyOnLoad(existing);
         }
 
         private void SubscribeModelDownloaderEvents()
         {
             var app = AppManager.Instance;
             if (app == null) return;
+
             var dl = app.ModelDownloader;
             if (dl == null) return;
 
-            // Refresh indicator now
             RefreshModelIndicator(dl);
 
             dl.OnProgress += (p) =>
@@ -109,14 +123,20 @@ namespace NomadGo.AppShell
 
         private void RefreshModelIndicator(Vision.ModelDownloader dl)
         {
-            if (dl == null) { modelIndicatorText = ""; return; }
+            if (dl == null)
+            {
+                modelIndicatorText = "";
+                return;
+            }
 
             string ver = dl.HasCachedModel ? dl.CachedVersion : "";
+
             if (string.IsNullOrEmpty(ver))
             {
                 var app = AppManager.Instance;
                 ver = (app != null && app.Config != null) ? app.Config.model.model_version : "";
             }
+
             modelIndicatorText = string.IsNullOrEmpty(ver) ? "" : $"Model v{ver} ✓";
         }
 
@@ -126,27 +146,23 @@ namespace NomadGo.AppShell
             var fp  = app != null ? app.FrameProcessor : null;
             var cm  = app != null ? app.CountManager   : null;
 
-            // Re-subscribe when AppManager becomes available after UIBuilder.Start
             var dl = app != null ? app.ModelDownloader : null;
             if (dl != null && string.IsNullOrEmpty(modelIndicatorText))
-            {
                 SubscribeModelDownloaderEvents();
-            }
-            // Keep indicator text live-synced while download is active
+
             if (dl != null && dl.IsDownloading)
             {
                 modelDownloadInProgress = true;
                 modelDownloadProgress   = dl.Progress;
                 modelIndicatorText      = $"Downloading model... {dl.Progress * 100f:F0}%";
             }
-            // Reflect live update-available state from downloader
+
             if (dl != null && dl.UpdateAvailable && !modelUpdateAvailable)
             {
                 modelUpdateAvailable = true;
                 modelIndicatorText   = $"v{dl.CachedVersion} — Update: v{dl.PendingVersion}";
             }
 
-            // Show model loading state when NOT scanning yet
             if (!isScanning)
             {
                 if (fp != null && fp.IsEngineLoading)
@@ -185,10 +201,8 @@ namespace NomadGo.AppShell
         {
             if (stylesInit) return;
 
-            // Size everything relative to screen height so it looks correct on any density.
-            // DPI-based scaling over-sizes on high-PPI phones (e.g. 401-DPI Moto G84 → 2.5×).
             float H = Screen.height;
-            btnHeight    = H * 0.075f;   // 7.5 % of screen
+            btnHeight    = H * 0.075f;
             btnMargin    = H * 0.012f;
             statusHeight = H * 0.055f;
 
@@ -206,8 +220,6 @@ namespace NomadGo.AppShell
             btnStyle.normal.textColor = Color.white;
             btnStyle.alignment = TextAnchor.MiddleCenter;
             btnStyle.normal.background = MakeTex(new Color(0.08f, 0.63f, 0.08f, 0.92f));
-            btnStyle.active.background = MakeTex(new Color(0.04f, 0.45f, 0.04f, 0.95f));
-            btnStyle.hover.background  = MakeTex(new Color(0.12f, 0.75f, 0.12f, 0.92f));
 
             statusStyle = new GUIStyle();
             statusStyle.fontSize = Mathf.RoundToInt(H * 0.016f);
@@ -239,6 +251,7 @@ namespace NomadGo.AppShell
         private void InitModelStyles()
         {
             if (modelStylesInit) return;
+
             float H = Screen.height;
 
             modelPillStyle = new GUIStyle();
@@ -291,27 +304,25 @@ namespace NomadGo.AppShell
             float H = Screen.height;
             float m = btnMargin;
 
-            // Detection boxes (drawn behind status bar and buttons)
             if (isScanning && latestDetections != null && latestDetections.Count > 0)
                 DrawDetectionBoxes(W, H);
 
             GUI.Box(new Rect(0, 0, W, statusHeight), GUIContent.none, statusStyle);
             GUI.Label(new Rect(0, 0, W, statusHeight), statusMessage, statusStyle);
 
-            // Model indicator pill in top-right of status bar
             if (!string.IsNullOrEmpty(modelIndicatorText))
             {
                 float pillW = W * 0.38f;
                 float pillH = statusHeight;
-                // Choose colour based on state
+
                 Color pillTextColor = modelDownloadInProgress
                     ? Color.yellow
                     : (modelUpdateAvailable ? new Color(1f, 0.7f, 0.2f) : new Color(0.55f, 1f, 0.55f));
+
                 modelPillStyle.normal.textColor = pillTextColor;
                 GUI.Label(new Rect(W - pillW, 0, pillW, pillH), modelIndicatorText, modelPillStyle);
             }
 
-            // Download progress bar (shown just below the status bar)
             if (modelDownloadInProgress)
             {
                 float barH = Mathf.Max(8f, H * 0.012f);
@@ -330,24 +341,34 @@ namespace NomadGo.AppShell
             float halfW   = (W - 3 * m) / 2f;
             float row2Y   = bottomY - m - btnHeight;
 
-            DrawButton(new Rect(m,          row2Y, halfW, btnHeight),
-                "Export",   new Color(0.12f, 0.31f, 0.78f, 0.92f), OnExport);
-            DrawButton(new Rect(2*m + halfW, row2Y, halfW, btnHeight),
-                "Reports",  new Color(0.47f, 0.16f, 0.63f, 0.92f), OnToggleReports);
+            DrawButton(new Rect(m, row2Y, halfW, btnHeight),
+                "Export", new Color(0.12f, 0.31f, 0.78f, 0.92f), OnExport);
 
-            // ---- Model download / update row (above Export/Reports row) ----
+            DrawButton(new Rect(2 * m + halfW, row2Y, halfW, btnHeight),
+                "Reports", new Color(0.47f, 0.16f, 0.63f, 0.92f), OnToggleReports);
+
+            float uploadY = row2Y - m - btnHeight;
+
+            DrawButton(new Rect(m, uploadY, W - 2 * m, btnHeight),
+                "Upload Items File",
+                new Color(0.10f, 0.45f, 0.85f, 0.92f),
+                OnUploadCatalog);
+
+            float modelRowY = uploadY - m - btnHeight;
+
             if (modelJustDownloaded)
             {
-                float reloadRowY = row2Y - m - btnHeight;
-                DrawButton(new Rect(m, reloadRowY, W - 2*m, btnHeight),
-                    "Model updated — tap to reload", new Color(0.08f, 0.45f, 0.63f, 0.92f), OnReloadModelNow);
+                DrawButton(new Rect(m, modelRowY, W - 2 * m, btnHeight),
+                    "Model updated — tap to reload",
+                    new Color(0.08f, 0.45f, 0.63f, 0.92f),
+                    OnReloadModelNow);
             }
             else if (modelUpdateAvailable && !modelDownloadInProgress)
             {
-                float updateRowY = row2Y - m - btnHeight;
-                DrawButton(new Rect(m, updateRowY, W - 2*m, btnHeight),
-                    $"Update Available ({(AppManager.Instance?.ModelDownloader?.PendingVersion ?? "")}) ↓ Download",
-                    new Color(0.63f, 0.45f, 0.08f, 0.92f), OnDownloadUpdate);
+                DrawButton(new Rect(m, modelRowY, W - 2 * m, btnHeight),
+                    $"Update Available ({(AppManager.Instance?.ModelDownloader?.PendingVersion ?? "")}) ↓ Download",
+                    new Color(0.63f, 0.45f, 0.08f, 0.92f),
+                    OnDownloadUpdate);
             }
 
             if (!isScanning)
@@ -357,32 +378,58 @@ namespace NomadGo.AppShell
                 bool loading     = fp != null && fp.IsEngineLoading;
 
                 if (modelDownloadInProgress)
-                    DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
-                        $"Downloading model {modelDownloadProgress * 100f:F0}%", new Color(0.35f, 0.35f, 0.35f, 0.85f), null);
+                    DrawButton(new Rect(m, bottomY, W - 2 * m, btnHeight),
+                        $"Downloading model {modelDownloadProgress * 100f:F0}%",
+                        new Color(0.35f, 0.35f, 0.35f, 0.85f),
+                        null);
                 else if (loading)
-                    DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
-                        "Loading AI model...", new Color(0.35f, 0.35f, 0.35f, 0.85f), null);
+                    DrawButton(new Rect(m, bottomY, W - 2 * m, btnHeight),
+                        "Loading AI model...",
+                        new Color(0.35f, 0.35f, 0.35f, 0.85f),
+                        null);
                 else if (!engineReady)
-                    DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
-                        "Initializing...", new Color(0.35f, 0.35f, 0.35f, 0.85f), null);
+                    DrawButton(new Rect(m, bottomY, W - 2 * m, btnHeight),
+                        "Initializing...",
+                        new Color(0.35f, 0.35f, 0.35f, 0.85f),
+                        null);
                 else
-                    DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
-                        "\u25B6  Start Scan", new Color(0.08f, 0.63f, 0.08f, 0.92f), OnStartScan);
+                    DrawButton(new Rect(m, bottomY, W - 2 * m, btnHeight),
+                        "\u25B6  Start Scan",
+                        new Color(0.08f, 0.63f, 0.08f, 0.92f),
+                        OnStartScan);
             }
             else
-                DrawButton(new Rect(m, bottomY, W - 2*m, btnHeight),
-                    "\u25A0  Stop Scan", new Color(0.78f, 0.12f, 0.12f, 0.92f), OnStopScan);
+            {
+                DrawButton(new Rect(m, bottomY, W - 2 * m, btnHeight),
+                    "\u25A0  Stop Scan",
+                    new Color(0.78f, 0.12f, 0.12f, 0.92f),
+                    OnStopScan);
+            }
         }
 
-        // ---- Model download / reload actions ----
+        private void OnUploadCatalog()
+        {
+            var uploader = global::CatalogUploader.Instance ?? FindObjectOfType<global::CatalogUploader>();
+
+            if (uploader == null)
+            {
+                SetStatus("Catalog uploader not found");
+                return;
+            }
+
+            SetStatus("Choose client items JSON file...");
+            uploader.PickCatalogFile();
+        }
 
         private void OnDownloadUpdate()
         {
             var dl = AppManager.Instance?.ModelDownloader;
             if (dl == null) return;
+
             dl.DownloadModel(
-                p  => { modelDownloadProgress = p; },
-                ok => {
+                p => { modelDownloadProgress = p; },
+                ok =>
+                {
                     if (ok) modelJustDownloaded = true;
                     modelUpdateAvailable = false;
                 }
@@ -392,10 +439,12 @@ namespace NomadGo.AppShell
         private void OnReloadModelNow()
         {
             modelJustDownloaded = false;
+
             var dl = AppManager.Instance?.ModelDownloader;
             if (dl == null) return;
 
             var engine = FindObjectOfType<Vision.ONNXInferenceEngine>();
+
             if (engine != null)
             {
                 engine.ReloadModel(dl.CachedModelPath, dl.CachedLabelsPath);
@@ -418,14 +467,8 @@ namespace NomadGo.AppShell
             {
                 if (det == null) continue;
 
-                Rect b = det.boundingBox; // normalized [0,1] in landscape detection frame
+                Rect b = det.boundingBox;
 
-                // Transform landscape detection coords → portrait screen pixels
-                // For Android portrait with videoRotationAngle=90 (back camera):
-                //   landscape U → portrait Y (top→bottom = U=0→1)
-                //   landscape V → portrait X (left→right = V=0→1)
-                // Detection frame may be Y-flipped on Android RenderTexture,
-                // so by = 1 - by_raw gives correct mapping.
                 float sx = (1f - b.y - b.height) * W;
                 float sy = b.x * H;
                 float sw = b.height * W;
@@ -436,12 +479,11 @@ namespace NomadGo.AppShell
                 sw = Mathf.Max(40, sw);
                 sh = Mathf.Max(40, sh);
 
-                GUI.Box(new Rect(sx,           sy,           sw,     thick), GUIContent.none, boxStyle); // top
-                GUI.Box(new Rect(sx,           sy+sh-thick,  sw,     thick), GUIContent.none, boxStyle); // bottom
-                GUI.Box(new Rect(sx,           sy,           thick,  sh),    GUIContent.none, boxStyle); // left
-                GUI.Box(new Rect(sx+sw-thick,  sy,           thick,  sh),    GUIContent.none, boxStyle); // right
+                GUI.Box(new Rect(sx, sy, sw, thick), GUIContent.none, boxStyle);
+                GUI.Box(new Rect(sx, sy + sh - thick, sw, thick), GUIContent.none, boxStyle);
+                GUI.Box(new Rect(sx, sy, thick, sh), GUIContent.none, boxStyle);
+                GUI.Box(new Rect(sx + sw - thick, sy, thick, sh), GUIContent.none, boxStyle);
 
-                // Label
                 string lbl = $" {det.label} {det.confidence:P0}";
                 GUI.Label(new Rect(sx, sy - labelH, Mathf.Min(sw, W * 0.55f), labelH), lbl, boxLabelStyle);
             }
@@ -454,7 +496,9 @@ namespace NomadGo.AppShell
             Color hc = new Color(
                 Mathf.Min(1f, color.r + 0.12f),
                 Mathf.Min(1f, color.g + 0.12f),
-                Mathf.Min(1f, color.b + 0.12f), color.a);
+                Mathf.Min(1f, color.b + 0.12f),
+                color.a);
+
             var hTex = GetCachedTex(hc);
             btnStyle.hover.background  = hTex;
             btnStyle.active.background = hTex;
@@ -477,20 +521,20 @@ namespace NomadGo.AppShell
 
             float bY = py + ph - btnHeight - 10;
             float bW = (pw - 30) / 2f;
-            DrawButton(new Rect(px + 10,      bY, bW, btnHeight),
-                "Refresh", new Color(0.12f, 0.47f, 0.71f, 0.92f), RefreshReports);
+
+            DrawButton(new Rect(px + 10, bY, bW, btnHeight),
+                "Refresh",
+                new Color(0.12f, 0.47f, 0.71f, 0.92f),
+                RefreshReports);
+
             DrawButton(new Rect(px + 20 + bW, bY, bW, btnHeight),
-                "X  Close", new Color(0.71f, 0.24f, 0.24f, 0.92f), () => showReports = false);
+                "X  Close",
+                new Color(0.71f, 0.24f, 0.24f, 0.92f),
+                () => showReports = false);
         }
 
         private void OnStartScan()
         {
-            // FIX: Guard against pressing Start Scan while the model is still loading or
-            // downloading.  Previously isScanning was set to true immediately which caused
-            // the Update() loop to skip the "Loading AI model..." status message and the
-            // FrameProcessor.StartProcessing() call would fail silently (engine not ready).
-            // The button is already hidden/disabled in OnGUI during these states, but a
-            // direct call path (e.g. from tests or automation) could still reach here.
             var fp = AppManager.Instance != null
                 ? AppManager.Instance.FrameProcessor
                 : FindObjectOfType<Vision.FrameProcessor>();
@@ -518,17 +562,17 @@ namespace NomadGo.AppShell
             if (AppManager.Instance != null)
                 AppManager.Instance.StartScan();
             else
-            {
-                if (fp != null) fp.StartProcessing();
-            }
+                fp?.StartProcessing();
         }
 
         private void OnStopScan()
         {
             isScanning = false;
+
             string summary = detectedTotal > 0
                 ? $"Scan done. {detectedTotal} items found. See Reports."
                 : "Scan stopped. Check Reports for results.";
+
             SetStatus(summary);
             latestDetections.Clear();
 
@@ -544,6 +588,7 @@ namespace NomadGo.AppShell
         private void OnExport()
         {
             var storage = FindObjectOfType<Storage.SessionStorage>();
+
             if (storage != null)
             {
                 string path = storage.ExportCurrentSession();
@@ -551,7 +596,10 @@ namespace NomadGo.AppShell
                     ? $"Exported: {System.IO.Path.GetFileName(path)}"
                     : "No active session to export.");
             }
-            else { SetStatus("Storage not available."); }
+            else
+            {
+                SetStatus("Storage not available.");
+            }
         }
 
         private void OnToggleReports()
@@ -563,9 +611,14 @@ namespace NomadGo.AppShell
         private void RefreshReports()
         {
             var storage = FindObjectOfType<Storage.SessionStorage>();
-            if (storage == null) { reportsContent = "Storage system not available."; return; }
+            if (storage == null)
+            {
+                reportsContent = "Storage system not available.";
+                return;
+            }
 
             string[] ids = storage.GetAllSessionIds();
+
             if (ids == null || ids.Length == 0)
             {
                 reportsContent = "No sessions recorded yet.\nStart a scan to create a report.";
@@ -576,15 +629,19 @@ namespace NomadGo.AppShell
             sb.AppendLine($"Total Sessions: {ids.Length}\n");
 
             int start = Mathf.Max(0, ids.Length - 5);
+
             for (int i = ids.Length - 1; i >= start; i--)
             {
                 var session = storage.LoadSession(ids[i]);
+
                 if (session != null)
                 {
                     sb.AppendLine($"ID: {session.sessionId}");
                     sb.AppendLine($"  Start:     {session.startTime}");
+
                     if (!string.IsNullOrEmpty(session.endTime))
                         sb.AppendLine($"  End:       {session.endTime}");
+
                     sb.AppendLine($"  Items:     {session.totalItemsCounted}");
                     sb.AppendLine($"  Snapshots: {session.snapshots?.Count ?? 0}");
                     sb.AppendLine();
@@ -594,13 +651,15 @@ namespace NomadGo.AppShell
             if (storage.IsSessionActive && storage.CurrentSession != null)
             {
                 var cur = storage.CurrentSession;
-                sb.Insert(0, $"[ACTIVE SESSION: {cur.sessionId}]\n" +
-                             $"  Items: {cur.totalItemsCounted}\n\n");
+                sb.Insert(0, $"[ACTIVE SESSION: {cur.sessionId}]\n  Items: {cur.totalItemsCounted}\n\n");
             }
 
             reportsContent = sb.ToString();
         }
 
-        private void SetStatus(string msg) => statusMessage = msg;
+        private void SetStatus(string msg)
+        {
+            statusMessage = msg;
+        }
     }
 }
