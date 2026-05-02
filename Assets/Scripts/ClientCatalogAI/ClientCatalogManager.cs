@@ -7,12 +7,21 @@ public class ClientCatalogManager : MonoBehaviour
     public static ClientCatalogManager Instance;
 
     private ClientCatalog catalog;
+
     private string path;
+
+    // 🔥 حالة الكتالوج
+    public bool IsLoaded { get; private set; } = false;
+
+    // 🔥 عدد العناصر
+    public int ItemsCount => catalog?.items?.Count ?? 0;
 
     void Awake()
     {
         Instance = this;
+
         path = Path.Combine(Application.persistentDataPath, "client_catalog.json");
+
         Load();
     }
 
@@ -21,19 +30,33 @@ public class ClientCatalogManager : MonoBehaviour
         if (!File.Exists(path))
         {
             Debug.LogWarning("[Catalog] No file found.");
-            catalog = new ClientCatalog { items = new System.Collections.Generic.List<CatalogItem>() };
+            IsLoaded = false;
             return;
         }
 
-        string json = File.ReadAllText(path);
-        catalog = JsonUtility.FromJson<ClientCatalog>(json);
+        try
+        {
+            string json = File.ReadAllText(path);
 
-        Debug.Log($"[Catalog] Loaded {catalog.items.Count} items.");
+            catalog = JsonUtility.FromJson<ClientCatalog>(json);
+
+            IsLoaded = catalog != null &&
+                       catalog.items != null &&
+                       catalog.items.Count > 0;
+
+            Debug.Log($"[Catalog] Loaded {ItemsCount} items.");
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError("[Catalog] Failed to load JSON: " + ex.Message);
+            IsLoaded = false;
+        }
     }
 
     public CatalogItem MatchByVisual(string detectedClass)
     {
-        if (catalog?.items == null) return null;
+        if (catalog?.items == null)
+            return null;
 
         return catalog.items.FirstOrDefault(i =>
             !string.IsNullOrEmpty(i.visual_class) &&
@@ -43,7 +66,8 @@ public class ClientCatalogManager : MonoBehaviour
 
     public CatalogItem MatchByBarcode(string code)
     {
-        if (catalog?.items == null) return null;
+        if (catalog?.items == null)
+            return null;
 
         return catalog.items.FirstOrDefault(i =>
             !string.IsNullOrEmpty(i.barcode) &&
