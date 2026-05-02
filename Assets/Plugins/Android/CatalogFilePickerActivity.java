@@ -4,8 +4,6 @@ import android.app.Activity;
 import android.os.Bundle;
 import android.content.Intent;
 import android.net.Uri;
-import android.provider.OpenableColumns;
-import android.database.Cursor;
 import java.io.InputStream;
 import java.io.FileOutputStream;
 import java.io.File;
@@ -49,6 +47,7 @@ public class CatalogFilePickerActivity extends Activity {
 
             byte[] buffer = new byte[8192];
             int len;
+
             while ((len = input.read(buffer)) > 0) {
                 output.write(buffer, 0, len);
             }
