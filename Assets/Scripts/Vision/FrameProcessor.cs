@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 
@@ -11,31 +12,59 @@ namespace NomadGo.Vision
 
         public List<DetectionResult> LatestDetections { get; private set; } = new List<DetectionResult>();
 
+        public event Action<List<DetectionResult>> OnDetectionsUpdated;
+
         private ONNXInferenceEngine engine;
+
+        private int inputWidth = 640;
+        private int inputHeight = 640;
+
+        public int InputWidth => inputWidth;
+        public int InputHeight => inputHeight;
+        public float LastInferenceTimeMs => engine != null ? engine.LastInferenceTimeMs : 0f;
 
         private void Awake()
         {
             Instance = this;
+            EnsureEngine();
+        }
+
+        public void Initialize(AppShell.ModelConfig config)
+        {
+            inputWidth = config.input_width > 0 ? config.input_width : 640;
+            inputHeight = config.input_height > 0 ? config.input_height : 640;
+
+            EnsureEngine();
+
+            if (engine != null)
+            {
+                engine.Initialize(config);
+                Debug.Log("[FrameProcessor] Initialized with ONNX engine.");
+            }
+            else
+            {
+                Debug.LogError("[FrameProcessor] ONNXInferenceEngine not found and could not be created.");
+            }
+        }
+
+        private void EnsureEngine()
+        {
+            if (engine != null)
+                return;
 
             engine = GetComponent<ONNXInferenceEngine>();
 
             if (engine == null)
-            {
                 engine = FindObjectOfType<ONNXInferenceEngine>();
-            }
 
             if (engine == null)
-            {
-                Debug.LogError("[FrameProcessor] ONNXInferenceEngine not found.");
-            }
-            else
-            {
-                Debug.Log("[FrameProcessor] ONNXInferenceEngine found.");
-            }
+                engine = gameObject.AddComponent<ONNXInferenceEngine>();
         }
 
         public void StartProcessing()
         {
+            EnsureEngine();
+
             IsProcessing = true;
             Debug.Log("[FrameProcessor] Started.");
         }
@@ -44,6 +73,8 @@ namespace NomadGo.Vision
         {
             IsProcessing = false;
             LatestDetections.Clear();
+            OnDetectionsUpdated?.Invoke(LatestDetections);
+
             Debug.Log("[FrameProcessor] Stopped.");
         }
 
@@ -52,25 +83,25 @@ namespace NomadGo.Vision
             if (!IsProcessing)
                 return;
 
-            if (engine == null)
-            {
-                engine = FindObjectOfType<ONNXInferenceEngine>();
+            EnsureEngine();
 
-                if (engine == null)
-                    return;
-            }
+            if (engine == null)
+                return;
 
             Texture2D frame = CaptureFrame();
 
             if (frame == null)
                 return;
 
-            List<DetectionResult> detections = engine.Run(frame);
+            List<DetectionResult> detections = engine.RunInference(frame);
 
             if (detections != null)
             {
                 LatestDetections = detections;
-                Debug.Log("[FrameProcessor] Detections: " + LatestDetections.Count);
+                OnDetectionsUpdated?.Invoke(LatestDetections);
+
+                if (Time.frameCount % 30 == 0)
+                    Debug.Log("[FrameProcessor] Detections: " + LatestDetections.Count);
             }
 
             Destroy(frame);
@@ -82,8 +113,9 @@ namespace NomadGo.Vision
             {
                 return ScreenCapture.CaptureScreenshotAsTexture();
             }
-            catch
+            catch (Exception ex)
             {
+                Debug.LogError("[FrameProcessor] Capture failed: " + ex.Message);
                 return null;
             }
         }
