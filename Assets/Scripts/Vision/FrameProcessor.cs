@@ -1,66 +1,91 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace Vision
+namespace NomadGo.Vision
 {
     public class FrameProcessor : MonoBehaviour
     {
         public static FrameProcessor Instance;
 
         public bool IsProcessing { get; private set; } = false;
-        public List<DetectionResult> LatestDetections = new List<DetectionResult>();
+
+        public List<DetectionResult> LatestDetections { get; private set; } = new List<DetectionResult>();
 
         private ONNXInferenceEngine engine;
 
-        void Awake()
+        private void Awake()
         {
             Instance = this;
+
             engine = GetComponent<ONNXInferenceEngine>();
 
             if (engine == null)
             {
-                Debug.LogError("❌ ONNXInferenceEngine NOT FOUND");
+                engine = FindObjectOfType<ONNXInferenceEngine>();
+            }
+
+            if (engine == null)
+            {
+                Debug.LogError("[FrameProcessor] ONNXInferenceEngine not found.");
+            }
+            else
+            {
+                Debug.Log("[FrameProcessor] ONNXInferenceEngine found.");
             }
         }
 
         public void StartProcessing()
         {
             IsProcessing = true;
-            Debug.Log("🔥 FrameProcessor STARTED");
+            Debug.Log("[FrameProcessor] Started.");
         }
 
         public void StopProcessing()
         {
             IsProcessing = false;
             LatestDetections.Clear();
-            Debug.Log("🛑 FrameProcessor STOPPED");
+            Debug.Log("[FrameProcessor] Stopped.");
         }
 
-        void Update()
+        private void Update()
         {
-            if (!IsProcessing || engine == null)
+            if (!IsProcessing)
                 return;
 
-            Texture2D tex = GetCameraFrame();
+            if (engine == null)
+            {
+                engine = FindObjectOfType<ONNXInferenceEngine>();
 
-            if (tex == null)
+                if (engine == null)
+                    return;
+            }
+
+            Texture2D frame = CaptureFrame();
+
+            if (frame == null)
                 return;
 
-            var detections = engine.Run(tex);
+            List<DetectionResult> detections = engine.Run(frame);
 
             if (detections != null)
             {
                 LatestDetections = detections;
-
-                Debug.Log("✅ DETECTIONS: " + detections.Count);
+                Debug.Log("[FrameProcessor] Detections: " + LatestDetections.Count);
             }
+
+            Destroy(frame);
         }
 
-        private Texture2D GetCameraFrame()
+        private Texture2D CaptureFrame()
         {
-            // مؤقت: نأخذ الشاشة كصورة (حل سريع)
-            Texture2D tex = ScreenCapture.CaptureScreenshotAsTexture();
-            return tex;
+            try
+            {
+                return ScreenCapture.CaptureScreenshotAsTexture();
+            }
+            catch
+            {
+                return null;
+            }
         }
     }
 }
