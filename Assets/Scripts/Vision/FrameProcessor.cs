@@ -1,183 +1,66 @@
-using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace NomadGo.Vision
+namespace Vision
 {
     public class FrameProcessor : MonoBehaviour
     {
-        private ONNXInferenceEngine inferenceEngine;
-        private AppShell.CameraFix cameraFix;
+        public static FrameProcessor Instance;
 
-        private bool isProcessing    = false;
-        // FIX: track deferred-start so we don't lose the StartScan call made while model is loading
-        private bool pendingStart    = false;
-        private int  frameSkip       = 3;
-        private int  frameCounter    = 0;
-        private List<DetectionResult> latestDetections = new List<DetectionResult>();
+        public bool IsProcessing { get; private set; } = false;
+        public List<DetectionResult> LatestDetections = new List<DetectionResult>();
 
-        public bool IsProcessing    => isProcessing;
-        public bool IsEngineReady   => inferenceEngine != null && inferenceEngine.IsLoaded;
-        public bool IsEngineLoading => inferenceEngine != null && inferenceEngine.IsLoading;
-        public bool IsInDemoMode    => inferenceEngine != null && inferenceEngine.IsInDemoMode;
-        public List<DetectionResult> LatestDetections => latestDetections;
-        public float LastInferenceTimeMs => inferenceEngine != null ? inferenceEngine.LastInferenceTimeMs : 0f;
-        public int InputWidth  { get; private set; } = 640;
-        public int InputHeight { get; private set; } = 640;
+        private ONNXInferenceEngine engine;
 
-        public delegate void DetectionsUpdatedHandler(List<DetectionResult> detections);
-        public event DetectionsUpdatedHandler OnDetectionsUpdated;
-
-        public void Initialize(AppShell.ModelConfig config)
+        void Awake()
         {
-            if (inferenceEngine == null)
-                inferenceEngine = gameObject.AddComponent<ONNXInferenceEngine>();
+            Instance = this;
+            engine = GetComponent<ONNXInferenceEngine>();
 
-            inferenceEngine.Initialize(config);
-
-            InputWidth  = config.input_width;
-            InputHeight = config.input_height;
-            frameSkip   = Mathf.Max(1, (int)(30f / 5f) - 1);
-            Debug.Log($"[FrameProcessor] Initialized. FrameSkip={frameSkip}, Model={config.path}");
+            if (engine == null)
+            {
+                Debug.LogError("❌ ONNXInferenceEngine NOT FOUND");
+            }
         }
 
         public void StartProcessing()
         {
-            if (inferenceEngine == null)
-            {
-                Debug.LogError("[FrameProcessor] Inference engine not initialized. Call Initialize() first.");
-                return;
-            }
-
-            // FIX: if the model is still loading, queue a deferred start instead of failing silently.
-            // Previously this returned with LogError and the scan never started even after the model
-            // finished loading — the user had to press Start Scan a second time.
-            if (!inferenceEngine.IsLoaded)
-            {
-                if (inferenceEngine.IsLoading)
-                {
-                    if (!pendingStart)
-                    {
-                        pendingStart = true;
-                        Debug.Log("[FrameProcessor] Model still loading — deferring StartProcessing until ready.");
-                        StartCoroutine(WaitUntilEngineReady());
-                    }
-                    else
-                    {
-                        Debug.Log("[FrameProcessor] Deferred start already queued.");
-                    }
-                }
-                else
-                {
-                    Debug.LogError("[FrameProcessor] Engine not ready and not loading. Cannot start.");
-                }
-                return;
-            }
-
-            // Prefer injected reference; fall back to scene search only once
-            if (cameraFix == null)
-                cameraFix = FindObjectOfType<AppShell.CameraFix>();
-
-            if (cameraFix == null)
-            {
-                Debug.LogError("[FrameProcessor] CameraFix not found. Add CameraFix to the camera GameObject.");
-                return;
-            }
-
-            pendingStart = false;
-            isProcessing = true;
-            frameCounter = 0;
-            Debug.Log("[FrameProcessor] Processing started.");
+            IsProcessing = true;
+            Debug.Log("🔥 FrameProcessor STARTED");
         }
-
-        // FIX: coroutine that polls until the ONNX engine finishes loading, then starts processing.
-        // This ensures a single press of "Start Scan" always works regardless of load timing.
-        private IEnumerator WaitUntilEngineReady()
-        {
-            Debug.Log("[FrameProcessor] Waiting for engine to finish loading...");
-            while (inferenceEngine != null && inferenceEngine.IsLoading)
-                yield return new WaitForSeconds(0.25f);
-
-            if (inferenceEngine == null || !inferenceEngine.IsLoaded)
-            {
-                Debug.LogError("[FrameProcessor] Engine failed to load — cannot start processing.");
-                pendingStart = false;
-                yield break;
-            }
-
-            Debug.Log("[FrameProcessor] Engine ready after deferred wait — starting processing.");
-            StartProcessing();
-        }
-
-        public void InjectCameraFix(AppShell.CameraFix fix) => cameraFix = fix;
 
         public void StopProcessing()
         {
-            pendingStart = false;
-            StopAllCoroutines();
-            isProcessing = false;
-            latestDetections.Clear();
-            OnDetectionsUpdated?.Invoke(latestDetections);
-            Debug.Log("[FrameProcessor] Processing stopped.");
+            IsProcessing = false;
+            LatestDetections.Clear();
+            Debug.Log("🛑 FrameProcessor STOPPED");
         }
 
-        private void Update()
+        void Update()
         {
-            if (!isProcessing) return;
-            if (cameraFix == null || !cameraFix.IsReady) return;
+            if (!IsProcessing || engine == null)
+                return;
 
-            var webCam = cameraFix.CameraTexture;
-            if (webCam == null || !webCam.isPlaying || !webCam.didUpdateThisFrame) return;
+            Texture2D tex = GetCameraFrame();
 
-            frameCounter++;
-            if (frameCounter % (frameSkip + 1) != 0) return;
+            if (tex == null)
+                return;
 
-            var tex = ConvertWebCamToTexture(webCam);
-            if (tex == null) return;
+            var detections = engine.Run(tex);
 
-            ProcessFrame(tex);
-            Destroy(tex);
-        }
-
-        private Texture2D ConvertWebCamToTexture(WebCamTexture webCam)
-        {
-            try
+            if (detections != null)
             {
-                int targetW = InputWidth;
-                int targetH = InputHeight;
+                LatestDetections = detections;
 
-                var rt = RenderTexture.GetTemporary(targetW, targetH, 0, RenderTextureFormat.ARGB32);
-                Graphics.Blit(webCam, rt);
-
-                var prev = RenderTexture.active;
-                RenderTexture.active = rt;
-
-                var tex = new Texture2D(targetW, targetH, TextureFormat.RGB24, false);
-                tex.ReadPixels(new Rect(0, 0, targetW, targetH), 0, 0);
-                tex.Apply();
-
-                RenderTexture.active = prev;
-                RenderTexture.ReleaseTemporary(rt);
-
-                return tex;
-            }
-            catch (System.Exception e)
-            {
-                Debug.LogError($"[FrameProcessor] Frame conversion error: {e.Message}");
-                return null;
+                Debug.Log("✅ DETECTIONS: " + detections.Count);
             }
         }
 
-        private void ProcessFrame(Texture2D frame)
+        private Texture2D GetCameraFrame()
         {
-            var detections = inferenceEngine.RunInference(frame);
-            latestDetections = detections;
-            OnDetectionsUpdated?.Invoke(detections);
-        }
-
-        private void OnDestroy()
-        {
-            StopProcessing();
+            // مؤقت: نأخذ الشاشة كصورة (حل سريع)
+            Texture2D tex = ScreenCapture.CaptureScreenshotAsTexture();
+            return tex;
         }
     }
 }
