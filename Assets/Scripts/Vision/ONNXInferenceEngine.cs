@@ -148,8 +148,8 @@ namespace NomadGo.Vision
         {
             var sw = Stopwatch.StartNew();
             var tensor = TextureToNCHWTensor(frame);
-            using (var input = NamedOnnxValue.CreateFromTensor(ortInputName, tensor))
-            using (var results = ortSession.Run(new[] { input }))
+            var input = NamedOnnxValue.CreateFromTensor<float>("images", inputTensor);
+            var results = session.Run(new[] { input });
             {
                 sw.Stop();
                 lastInferenceMs = (float)sw.Elapsed.TotalMilliseconds;
