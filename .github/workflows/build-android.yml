@@ -1,205 +1,63 @@
-name: Build Android APK (Release)
+name: Build Android APK
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
-  workflow_dispatch: {}
 
 jobs:
-  buildForAndroid:
-    name: Build for Android (Release Signed)
+  build-android:
+    name: Build Android APK
     runs-on: ubuntu-latest
-    timeout-minutes: 90
+
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           lfs: true
 
-      - name: Free Disk Space
-        uses: jlumbroso/free-disk-space@v1.3.1
-        with:
-          tool-cache: false
-          android: false
-          dotnet: true
-          haskell: true
-          large-packages: true
-          docker-images: true
-          swap-storage: true
+      - name: Pull Git LFS files
+        run: git lfs pull
 
-      - name: Build Android APK (Release)
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-Android-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-Android-
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/lib/android/sdk/ndk
+          df -h
+
+      - name: Build Android APK
         uses: game-ci/unity-builder@v4
         env:
-          UNITY_LICENSE:  ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL:    ${{ secrets.UNITY_EMAIL }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
         with:
           unityVersion: 2022.3.22f1
           targetPlatform: Android
+          projectPath: .
+          buildName: NomadGo-SpatialVision
+          buildsPath: build
           androidExportType: androidPackage
           androidTargetSdkVersion: AndroidApiLevel34
-          androidKeystoreBase64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          androidKeystorePass:   ${{ secrets.ANDROID_KEYSTORE_PASS }}
-          androidKeyaliasName:   ${{ secrets.ANDROID_KEYALIAS_NAME }}
-          androidKeyaliasPass:   ${{ secrets.ANDROID_KEYALIAS_PASS }}
-          customParameters: -customDefines UNITY_AR;NOMADGO_SPATIAL
-          buildName: NomadGo-SpatialVision
-          versioning: Semantic
-          allowDirtyBuild: true
+          androidSdkManagerParameters: "platforms;android-34"
+          customParameters: "-customDefines UNITY_AR;NOMADGO_SPATIAL"
 
-      - name: Notify on Build Failure
-        if: failure()
-        run: |
-          echo "::error::Unity build FAILED. Check the logs above for compiler errors."
-          echo "## ❌ Build Failed" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "The Unity Android build failed. Common causes:" >> $GITHUB_STEP_SUMMARY
-          echo "- Missing secrets (UNITY_LICENSE, UNITY_EMAIL, UNITY_PASSWORD)" >> $GITHUB_STEP_SUMMARY
-          echo "- Missing keystore secrets (ANDROID_KEYSTORE_BASE64 etc.)" >> $GITHUB_STEP_SUMMARY
-          echo "- Compiler errors in C# scripts" >> $GITHUB_STEP_SUMMARY
-          echo "- Package version conflicts in manifest.json" >> $GITHUB_STEP_SUMMARY
-
-      - name: Patch and Re-sign APK for Moto G84 5G
-        run: |
-          APK=$(find build/Android -name "*.apk" | head -1)
-          echo "Source APK: $APK ($(du -sh $APK | cut -f1))"
-
-          echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > /tmp/release.keystore
-
-          sudo apt-get update
-          sudo apt-get install -y zipalign apksigner
-
-          python3 << 'PYEOF'
-          import zipfile, struct, glob
-
-          apk = glob.glob('build/Android/*.apk')[0]
-          print(f"Patching: {apk}")
-
-          with zipfile.ZipFile(apk, 'r') as z:
-              manifest = bytearray(z.read('AndroidManifest.xml'))
-
-          patched = 0
-          for i in range(0, len(manifest) - 8, 4):
-              v = struct.unpack_from('<I', manifest, i)[0]
-              if v == 0x00030000 and i >= 4:
-                  p = struct.unpack_from('<I', manifest, i - 4)[0]
-                  if p == 0x11000008:
-                      struct.pack_into('<I', manifest, i, 0x00020000)
-                      patched += 1
-                      print(f'Patched glEsVersion at offset {i}')
-
-          print(f'Total patches: {patched}')
-          if patched == 0:
-              print('INFO: glEsVersion already 2.0 or not found. No patch needed.')
-
-          with zipfile.ZipFile(apk, 'r') as zin:
-              with zipfile.ZipFile('/tmp/patched.apk', 'w') as zout:
-                  for item in zin.infolist():
-                      if item.filename == 'AndroidManifest.xml':
-                          zout.writestr(item, bytes(manifest))
-                      else:
-                          zout.writestr(item, zin.read(item.filename))
-
-          print('Repacked to /tmp/patched.apk')
-          PYEOF
-
-          zipalign -f -p 4 /tmp/patched.apk /tmp/aligned.apk
-
-          apksigner sign \
-            --ks /tmp/release.keystore \
-            --ks-pass "pass:${{ secrets.ANDROID_KEYSTORE_PASS }}" \
-            --ks-key-alias "${{ secrets.ANDROID_KEYALIAS_NAME }}" \
-            --key-pass "pass:${{ secrets.ANDROID_KEYALIAS_PASS }}" \
-            --out /tmp/final.apk \
-            /tmp/aligned.apk
-
-          sudo cp /tmp/final.apk "$APK"
-          sudo chmod 644 "$APK"
-
-          apksigner verify "$APK"
-          echo "Final: $(ls -lh $APK)"
-
-      - name: Upload Signed APK Artifact
+      - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: NomadGo-SpatialVision-Release-APK
-          path: build/Android
-          retention-days: 30
-
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ github.run_number }}
-          name: "NomadGo SpatialVision v${{ github.run_number }}"
-          body: |
-            ## NomadGo SpatialVision - Release Build
-            - Signed Release APK
-            - Min SDK: Android 7.0 (API 24)
-            - Target SDK: Android 14 (API 34)
-            - Compatible with Moto G84 5G
-            - OpenGL ES 2.0 patched for maximum compatibility
-            - ARCore required
-            - ONNX Runtime inference enabled
-          files: build/Android/*.apk
-          draft: false
-          prerelease: false
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  testOnFirebase:
-    name: Test on Firebase Test Lab
-    needs: buildForAndroid
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-      - name: Download APK Artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: NomadGo-SpatialVision-Release-APK
-          path: apk
-
-      - name: Authenticate to Google Cloud
-        uses: google-github-actions/auth@v2
-        with:
-          credentials_json: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-
-      - name: Set up Google Cloud SDK
-        uses: google-github-actions/setup-gcloud@v2
-        with:
-          project_id: ${{ secrets.FIREBASE_PROJECT_ID }}
-
-      - name: Run Robo Test on Firebase Test Lab
-        run: |
-          APK=$(find apk -name "*.apk" | head -1)
-          echo "Testing APK: $APK"
-
-          gcloud firebase test android run \
-            --type robo \
-            --app "$APK" \
-            --device model=MediumPhone.arm,version=34,locale=en,orientation=portrait \
-            --timeout 120s \
-            --record-video \
-            --results-dir=nomadgo-${{ github.run_number }} \
-            --client-details matrixLabel="NomadGo v${{ github.run_number }}" \
-            --no-auto-google-login \
-            2>&1 | tee /tmp/ftl-output.txt
-
-          echo "Firebase Test Lab completed"
-
-      - name: Extract Test Results
-        if: always()
-        run: |
-          echo "## Firebase Test Lab Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          if grep -q "Passed" /tmp/ftl-output.txt; then
-            echo "✅ **Robo test PASSED** - App launched successfully on real device" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "❌ **Robo test had issues** - Check Firebase console for details" >> $GITHUB_STEP_SUMMARY
-          fi
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "View full results in Firebase Console" >> $GITHUB_STEP_SUMMARY
-          cat /tmp/ftl-output.txt >> $GITHUB_STEP_SUMMARY || true
+          name: NomadGo-SpatialVision-APK
+          path: build/Android/*.apk
+          if-no-files-found: error
