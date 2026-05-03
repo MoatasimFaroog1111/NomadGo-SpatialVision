@@ -23,60 +23,62 @@ public class ReportExporter : MonoBehaviour
     {
         try
         {
-            var manager = ClientCatalogManager.Instance ?? FindObjectOfType<ClientCatalogManager>();
+            ClientCatalogManager manager = ClientCatalogManager.Instance ?? FindObjectOfType<ClientCatalogManager>();
 
             if (manager == null || !manager.IsLoaded)
             {
-                Debug.LogError("[ReportExporter] Catalog not loaded");
+                Debug.LogError("[ReportExporter] Catalog not loaded.");
+                NotifyUI(false, "Export failed: catalog not loaded.");
                 return;
             }
 
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
-            string excelPath = Path.Combine(folderPath, $"Client_Products_{timestamp}.csv");
-            string pdfPath = Path.Combine(folderPath, $"Client_Products_{timestamp}.pdf");
+            string excelPath = Path.Combine(folderPath, "Client_Products_" + timestamp + ".csv");
+            string pdfPath = Path.Combine(folderPath, "Client_Products_" + timestamp + ".pdf");
 
             ExportCSV(manager, excelPath);
             ExportPDF(manager, pdfPath);
 
-            Debug.Log("[ReportExporter] Export done:");
-            Debug.Log("Excel: " + excelPath);
-            Debug.Log("PDF: " + pdfPath);
+            Debug.Log("[ReportExporter] Export done.");
+            Debug.Log("[ReportExporter] Excel: " + excelPath);
+            Debug.Log("[ReportExporter] PDF: " + pdfPath);
 
-            var ui = NomadGo.AppShell.UIBuilder.Instance ?? FindObjectOfType<NomadGo.AppShell.UIBuilder>();
-            if (ui != null)
-                ui.SetCatalogUploadStatus(true, "Export completed successfully. Excel and PDF saved to Downloads.");
+            NotifyUI(true, "Export completed successfully. Files saved to Downloads/NomadGo.");
         }
         catch (Exception ex)
         {
-            Debug.LogError("[ReportExporter] Error: " + ex.Message);
-
-            var ui = NomadGo.AppShell.UIBuilder.Instance ?? FindObjectOfType<NomadGo.AppShell.UIBuilder>();
-            if (ui != null)
-                ui.SetCatalogUploadStatus(false, "Export failed: " + ex.Message);
+            Debug.LogError("[ReportExporter] Error: " + ex);
+            NotifyUI(false, "Export failed: " + ex.Message);
         }
     }
 
-    // ================= Excel (CSV) =================
-
     private void ExportCSV(ClientCatalogManager manager, string path)
     {
+        ClientCatalog catalog = manager.GetCatalog();
+
         StringBuilder sb = new StringBuilder();
 
         sb.AppendLine("Client,SKU,Name,Category,Barcode,Visual,Hint");
 
-        foreach (var item in manager.GetType().GetField("catalog", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance).GetValue(manager) as dynamic)
+        if (catalog != null && catalog.items != null)
         {
-            foreach (var p in item.items)
+            foreach (CatalogItem item in catalog.items)
             {
-                sb.AppendLine($"{Safe(item.client_name)},{Safe(p.sku)},{Safe(p.name)},{Safe(p.category)},{Safe(p.barcode)},{Safe(p.visual_class)},{Safe(p.image_hint)}");
+                sb.AppendLine(
+                    EscapeCsv(manager.ClientName) + "," +
+                    EscapeCsv(item.sku) + "," +
+                    EscapeCsv(item.name) + "," +
+                    EscapeCsv(item.category) + "," +
+                    EscapeCsv(item.barcode) + "," +
+                    EscapeCsv(item.visual_class) + "," +
+                    EscapeCsv(item.image_hint)
+                );
             }
         }
 
-        File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
+        File.WriteAllText(path, sb.ToString(), new UTF8Encoding(true));
     }
-
-    // ================= PDF بسيط =================
 
     private void ExportPDF(ClientCatalogManager manager, string path)
     {
@@ -85,18 +87,32 @@ public class ReportExporter : MonoBehaviour
         sb.AppendLine("CLIENT PRODUCTS REPORT");
         sb.AppendLine("------------------------------");
         sb.AppendLine("Client: " + manager.ClientName);
-        sb.AppendLine("Total: " + manager.ItemsCount);
+        sb.AppendLine("Total Products: " + manager.ItemsCount);
         sb.AppendLine("------------------------------");
+        sb.AppendLine(manager.BuildReportText());
 
-        string report = manager.BuildReportText();
-        sb.AppendLine(report);
-
-        // PDF فعلي يحتاج مكتبة، حالياً نحفظ كنص لكن بصيغة PDF
-        File.WriteAllText(path, sb.ToString(), Encoding.UTF8);
+        File.WriteAllText(path, sb.ToString(), new UTF8Encoding(true));
     }
 
-    private string Safe(string v)
+    private string EscapeCsv(string value)
     {
-        return string.IsNullOrEmpty(v) ? "-" : v.Replace(",", " ");
+        if (string.IsNullOrEmpty(value))
+            return "";
+
+        string escaped = value.Replace("\"", "\"\"");
+
+        if (escaped.Contains(",") || escaped.Contains("\"") || escaped.Contains("\n") || escaped.Contains("\r"))
+            return "\"" + escaped + "\"";
+
+        return escaped;
+    }
+
+    private void NotifyUI(bool success, string message)
+    {
+        NomadGo.AppShell.UIBuilder ui =
+            NomadGo.AppShell.UIBuilder.Instance ?? FindObjectOfType<NomadGo.AppShell.UIBuilder>();
+
+        if (ui != null)
+            ui.SetCatalogUploadStatus(success, message);
     }
 }
