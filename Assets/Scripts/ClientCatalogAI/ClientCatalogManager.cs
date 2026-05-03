@@ -4,24 +4,6 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 
-[Serializable]
-public class ClientCatalog
-{
-    public string client_name;
-    public System.Collections.Generic.List<CatalogItem> items;
-}
-
-[Serializable]
-public class CatalogItem
-{
-    public string sku;
-    public string name;
-    public string category;
-    public string barcode;
-    public string visual_class;
-    public string image_hint;
-}
-
 public class ClientCatalogManager : MonoBehaviour
 {
     public static ClientCatalogManager Instance;
@@ -54,6 +36,7 @@ public class ClientCatalogManager : MonoBehaviour
         {
             string json = File.ReadAllText(path, Encoding.UTF8);
             catalog = JsonUtility.FromJson<ClientCatalog>(json);
+
             IsLoaded = catalog != null && catalog.items != null && catalog.items.Count > 0;
 
             Debug.Log(IsLoaded
@@ -121,6 +104,11 @@ public class ClientCatalogManager : MonoBehaviour
         }
 
         return sb.ToString();
+    }
+
+    public ClientCatalog GetCatalog()
+    {
+        return catalog;
     }
 
     private bool MatchText(string detected, string catalogValue)
