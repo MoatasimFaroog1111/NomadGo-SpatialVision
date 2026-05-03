@@ -5,22 +5,23 @@ namespace NomadGo.AppShell
 {
     public class UIBuilder : MonoBehaviour
     {
-        public static UIBuilder Instance { get; private set; }
+        public static UIBuilder Instance;
 
         private bool isScanning = false;
-        private string statusMessage = "NomadGo Ready — Press Start Scan";
-        private string catalogUploadMessage = "Client products file: not uploaded";
-        private Color catalogUploadColor = Color.yellow;
+        private bool showReport = false;
 
-        private float btnHeight;
-        private float btnMargin;
-        private float statusHeight;
-        private float panelHeight;
+        private string statusMessage = "Ready";
+        private string catalogMessage = "Catalog: Not Loaded";
+        private string reportText = "";
 
-        private GUIStyle btnStyle;
+        private Vector2 reportScroll;
+
+        private GUIStyle buttonStyle;
+        private GUIStyle titleStyle;
         private GUIStyle statusStyle;
-        private GUIStyle panelTitleStyle;
-        private GUIStyle panelTextStyle;
+        private GUIStyle successStyle;
+        private GUIStyle errorStyle;
+        private GUIStyle reportStyle;
 
         private List<Vision.DetectionResult> latestDetections = new List<Vision.DetectionResult>();
 
@@ -31,81 +32,78 @@ namespace NomadGo.AppShell
 
         private void Start()
         {
-            SubscribeModelDownloaderEvents();
             EnsureCatalogSystem();
-
-            if (GetComponent<CatalogIndicatorUI>() == null)
-                gameObject.AddComponent<CatalogIndicatorUI>();
-
-            RefreshCatalogStatusFromManager();
+            RefreshCatalogStatus();
         }
 
         private void EnsureCatalogSystem()
         {
-            var existing = GameObject.Find("CatalogSystem");
+            GameObject catalogSystem = GameObject.Find("CatalogSystem");
 
-            if (existing == null)
-                existing = new GameObject("CatalogSystem");
+            if (catalogSystem == null)
+                catalogSystem = new GameObject("CatalogSystem");
 
-            existing.name = "CatalogSystem";
+            if (catalogSystem.GetComponent<global::ClientCatalogManager>() == null)
+                catalogSystem.AddComponent<global::ClientCatalogManager>();
 
-            if (existing.GetComponent<global::ClientCatalogManager>() == null)
-                existing.AddComponent<global::ClientCatalogManager>();
+            if (catalogSystem.GetComponent<global::CatalogUploader>() == null)
+                catalogSystem.AddComponent<global::CatalogUploader>();
 
-            if (existing.GetComponent<global::CatalogUploader>() == null)
-                existing.AddComponent<global::CatalogUploader>();
-
-            if (existing.GetComponent<global::CatalogReportExporter>() == null)
-                existing.AddComponent<global::CatalogReportExporter>();
-
-            DontDestroyOnLoad(existing);
-        }
-
-        private void SubscribeModelDownloaderEvents()
-        {
-            // Optional hook for future downloader events.
+            DontDestroyOnLoad(catalogSystem);
         }
 
         private void Update()
         {
-            var fp = AppManager.Instance?.FrameProcessor;
+            var fp = AppManager.Instance != null ? AppManager.Instance.FrameProcessor : null;
 
-            if (isScanning && fp != null)
+            if (fp != null)
+            {
                 latestDetections = fp.LatestDetections ?? new List<Vision.DetectionResult>();
+
+                if (isScanning)
+                {
+                    if (!fp.IsProcessing)
+                        statusMessage = "Scan starting... waiting for camera/model";
+                    else
+                        statusMessage = "Scanning... detections: " + latestDetections.Count;
+                }
+            }
         }
 
         private void InitStyles()
         {
-            float H = Screen.height;
+            int fsBig = Mathf.RoundToInt(Screen.height * 0.032f);
+            int fsMed = Mathf.RoundToInt(Screen.height * 0.024f);
+            int fsSmall = Mathf.RoundToInt(Screen.height * 0.020f);
 
-            btnHeight = H * 0.07f;
-            btnMargin = H * 0.012f;
-            statusHeight = H * 0.055f;
-            panelHeight = H * 0.205f;
+            buttonStyle = new GUIStyle(GUI.skin.button);
+            buttonStyle.fontSize = fsBig;
+            buttonStyle.fontStyle = FontStyle.Bold;
+            buttonStyle.alignment = TextAnchor.MiddleCenter;
 
-            btnStyle = new GUIStyle(GUI.skin.button);
-            btnStyle.fontSize = Mathf.RoundToInt(H * 0.025f);
-            btnStyle.alignment = TextAnchor.MiddleCenter;
-            btnStyle.fontStyle = FontStyle.Bold;
+            titleStyle = new GUIStyle(GUI.skin.label);
+            titleStyle.fontSize = fsBig;
+            titleStyle.fontStyle = FontStyle.Bold;
+            titleStyle.alignment = TextAnchor.MiddleCenter;
+            titleStyle.normal.textColor = Color.white;
 
             statusStyle = new GUIStyle(GUI.skin.label);
-            statusStyle.fontSize = Mathf.RoundToInt(H * 0.021f);
-            statusStyle.alignment = TextAnchor.MiddleCenter;
-            statusStyle.normal.textColor = Color.white;
+            statusStyle.fontSize = fsMed;
             statusStyle.fontStyle = FontStyle.Bold;
+            statusStyle.alignment = TextAnchor.MiddleCenter;
+            statusStyle.wordWrap = true;
+            statusStyle.normal.textColor = Color.white;
 
-            panelTitleStyle = new GUIStyle(GUI.skin.label);
-            panelTitleStyle.fontSize = Mathf.RoundToInt(H * 0.023f);
-            panelTitleStyle.alignment = TextAnchor.UpperCenter;
-            panelTitleStyle.normal.textColor = Color.white;
-            panelTitleStyle.fontStyle = FontStyle.Bold;
+            successStyle = new GUIStyle(statusStyle);
+            successStyle.normal.textColor = Color.green;
 
-            panelTextStyle = new GUIStyle(GUI.skin.label);
-            panelTextStyle.fontSize = Mathf.RoundToInt(H * 0.019f);
-            panelTextStyle.alignment = TextAnchor.MiddleCenter;
-            panelTextStyle.fontStyle = FontStyle.Bold;
-            panelTextStyle.wordWrap = true;
-            panelTextStyle.normal.textColor = catalogUploadColor;
+            errorStyle = new GUIStyle(statusStyle);
+            errorStyle.normal.textColor = Color.red;
+
+            reportStyle = new GUIStyle(GUI.skin.label);
+            reportStyle.fontSize = fsSmall;
+            reportStyle.normal.textColor = Color.white;
+            reportStyle.wordWrap = true;
         }
 
         private void OnGUI()
@@ -114,58 +112,88 @@ namespace NomadGo.AppShell
 
             float W = Screen.width;
             float H = Screen.height;
-            float m = btnMargin;
+            float m = 22f;
 
-            GUI.Box(new Rect(0, 0, W, statusHeight), "");
-            GUI.Label(new Rect(0, 0, W, statusHeight), statusMessage, statusStyle);
+            DrawTopStatus(W, H);
 
-            float panelY = H - (panelHeight + btnHeight + (m * 3));
-            DrawCatalogPanel(W, panelY, m);
+            if (showReport)
+                DrawReportPanel(W, H, m);
 
-            float scanY = H - btnHeight - m;
-            if (!isScanning)
-            {
-                if (GUI.Button(new Rect(m, scanY, W - 2 * m, btnHeight), "▶ Start Scan", btnStyle))
-                    OnStartScan();
-            }
-            else
-            {
-                if (GUI.Button(new Rect(m, scanY, W - 2 * m, btnHeight), "■ Stop Scan", btnStyle))
-                    OnStopScan();
-            }
+            DrawBottomPanel(W, H, m);
 
             if (isScanning)
                 DrawDetections(W, H);
         }
 
-        private void DrawCatalogPanel(float W, float y, float m)
+        private void DrawTopStatus(float W, float H)
         {
-            float panelW = W - (2 * m);
-            GUI.Box(new Rect(m, y, panelW, panelHeight), "");
+            GUI.Box(new Rect(0, 0, W, H * 0.06f), "");
+            GUI.Label(new Rect(0, 0, W, H * 0.06f), statusMessage, titleStyle);
 
-            GUI.Label(new Rect(m, y + 4, panelW, btnHeight * 0.5f), "Client Products File", panelTitleStyle);
+            GUIStyle catStyle = catalogMessage.Contains("Loaded") ? successStyle : errorStyle;
+            GUI.Label(new Rect(10, H * 0.06f, W - 20, H * 0.055f), catalogMessage, catStyle);
+        }
 
-            float msgY = y + (btnHeight * 0.48f);
-            GUI.Label(new Rect(m * 2, msgY, W - 4 * m, btnHeight * 0.85f), catalogUploadMessage, panelTextStyle);
+        private void DrawBottomPanel(float W, float H, float m)
+        {
+            float panelH = H * 0.28f;
+            float panelY = H - panelH - m;
+            float btnH = H * 0.075f;
 
-            float rowY = y + panelHeight - btnHeight - m;
-            float gap = m;
-            float buttonW = (panelW - (gap * 2)) / 3f;
+            GUI.Box(new Rect(m, panelY, W - (m * 2), panelH), "");
 
-            if (GUI.Button(new Rect(m, rowY, buttonW, btnHeight), "📁 Upload", btnStyle))
-                OnUploadCatalog();
+            GUI.Label(new Rect(m, panelY + 10, W - (m * 2), 50), "Client Products File", titleStyle);
 
-            if (GUI.Button(new Rect(m + buttonW + gap, rowY, buttonW, btnHeight), "📊 Report", btnStyle))
-                OnShowReport();
+            GUIStyle msgStyle = catalogMessage.Contains("Loaded") ? successStyle : errorStyle;
+            GUI.Label(new Rect(m + 20, panelY + 65, W - (m * 2) - 40, 85), catalogMessage, msgStyle);
 
-            if (GUI.Button(new Rect(m + ((buttonW + gap) * 2), rowY, buttonW, btnHeight), "⬇ Export", btnStyle))
-                OnExportReport();
+            float btnY = panelY + panelH - btnH - 20;
+            float btnW = (W - (m * 2) - 40) / 3f;
+
+            if (GUI.Button(new Rect(m, btnY, btnW, btnH), "Upload", buttonStyle))
+                OnUpload();
+
+            if (GUI.Button(new Rect(m + btnW + 20, btnY, btnW, btnH), "Report", buttonStyle))
+                OnReport();
+
+            if (GUI.Button(new Rect(m + ((btnW + 20) * 2), btnY, btnW, btnH), "↓ Export", buttonStyle))
+                OnExport();
+
+            float scanY = H - btnH - 8;
+
+            if (!isScanning)
+            {
+                if (GUI.Button(new Rect(m, scanY, W - (m * 2), btnH), "▶ Start Scan", buttonStyle))
+                    OnStartScan();
+            }
+            else
+            {
+                if (GUI.Button(new Rect(m, scanY, W - (m * 2), btnH), "■ Stop Scan", buttonStyle))
+                    OnStopScan();
+            }
+        }
+
+        private void DrawReportPanel(float W, float H, float m)
+        {
+            float panelY = H * 0.14f;
+            float panelH = H * 0.48f;
+
+            GUI.Box(new Rect(m, panelY, W - (m * 2), panelH), "");
+            GUI.Label(new Rect(m, panelY + 10, W - (m * 2), 45), "Products Report", titleStyle);
+
+            Rect viewRect = new Rect(m + 15, panelY + 65, W - (m * 2) - 30, panelH - 130);
+            Rect contentRect = new Rect(0, 0, viewRect.width - 25, Mathf.Max(panelH, reportText.Length * 0.75f));
+
+            reportScroll = GUI.BeginScrollView(viewRect, reportScroll, contentRect);
+            GUI.Label(new Rect(0, 0, contentRect.width, contentRect.height), reportText, reportStyle);
+            GUI.EndScrollView();
+
+            if (GUI.Button(new Rect(m + 20, panelY + panelH - 55, W - (m * 2) - 40, 45), "Close Report", buttonStyle))
+                showReport = false;
         }
 
         private void DrawDetections(float W, float H)
         {
-            float labelH = Mathf.Max(70f, H * 0.08f);
-
             foreach (var det in latestDetections)
             {
                 Rect b = det.boundingBox;
@@ -176,106 +204,128 @@ namespace NomadGo.AppShell
                 float h = b.height * H;
 
                 GUI.Box(new Rect(x, y, w, h), "");
-                string txt = $"{det.label} {det.confidence:P0}";
-                GUI.Label(new Rect(x, y - labelH, w, labelH), txt);
+
+                string label = det.label + " " + Mathf.RoundToInt(det.confidence * 100f) + "%";
+
+                var manager = global::ClientCatalogManager.Instance ?? FindObjectOfType<global::ClientCatalogManager>();
+                if (manager != null && manager.IsLoaded)
+                {
+                    var item = manager.MatchByVisual(det.label);
+                    if (item != null)
+                        label = item.name + " | " + label;
+                }
+
+                GUI.Label(new Rect(x, Mathf.Max(0, y - 40), Mathf.Max(w, 180), 40), label, successStyle);
             }
         }
 
-        private void OnUploadCatalog()
+        private void OnUpload()
         {
+            showReport = false;
+            statusMessage = "Choose client products file...";
+
             var uploader = global::CatalogUploader.Instance ?? FindObjectOfType<global::CatalogUploader>();
 
             if (uploader == null)
             {
-                SetCatalogUploadStatus(false, "Uploader not found inside mobile app");
+                SetCatalogUploadStatus(false, "Uploader not found.");
                 return;
             }
 
-            statusMessage = "Choose client products file...";
-            SetCatalogUploadStatus(null, "Waiting for file selection...");
             uploader.PickCatalogFile();
         }
 
-        private void OnShowReport()
+        private void OnReport()
         {
+            RefreshCatalogStatus();
+
             var manager = global::ClientCatalogManager.Instance ?? FindObjectOfType<global::ClientCatalogManager>();
 
             if (manager == null || !manager.IsLoaded)
             {
-                SetCatalogUploadStatus(false, "No report available. Upload the client products file first.");
-                return;
-            }
-
-            SetCatalogUploadStatus(true, $"Report ready | Client: {manager.ClientName} | Products: {manager.ItemsCount}");
-            statusMessage = "Products report is ready";
-        }
-
-        private void OnExportReport()
-        {
-            var exporter = global::CatalogReportExporter.Instance ?? FindObjectOfType<global::CatalogReportExporter>();
-
-            if (exporter == null)
-            {
-                SetCatalogUploadStatus(false, "Export failed: exporter not found.");
-                return;
-            }
-
-            SetCatalogUploadStatus(null, "Exporting Excel and PDF files...");
-            var result = exporter.ExportExcelAndPdf();
-
-            if (result.success)
-            {
-                SetCatalogUploadStatus(true, result.message);
-                statusMessage = "Export successful";
+                reportText = "Catalog not loaded.\nPlease upload client products file first.";
+                catalogMessage = "Catalog: Not Loaded";
             }
             else
             {
-                SetCatalogUploadStatus(false, result.message);
+                reportText = manager.BuildReportText();
+                catalogMessage = "Catalog: Loaded (" + manager.ItemsCount + " items)";
             }
+
+            showReport = true;
+            statusMessage = "Report opened";
+        }
+
+        private void OnExport()
+        {
+            var exporter = FindObjectOfType<global::ReportExporter>();
+
+            if (exporter == null)
+            {
+                GameObject go = new GameObject("ReportExporter");
+                exporter = go.AddComponent<global::ReportExporter>();
+            }
+
+            exporter.ExportProductsReport();
+            SetCatalogUploadStatus(true, "Export completed successfully. Excel and PDF saved to Downloads.");
         }
 
         private void OnStartScan()
         {
             isScanning = true;
-            statusMessage = "Scanning...";
-            AppManager.Instance?.StartScan();
+            showReport = false;
+            statusMessage = "Starting scan...";
+
+            if (AppManager.Instance == null)
+            {
+                statusMessage = "Scan failed: AppManager not found.";
+                return;
+            }
+
+            AppManager.Instance.StartScan();
         }
 
         private void OnStopScan()
         {
             isScanning = false;
             statusMessage = "Stopped";
-            AppManager.Instance?.StopScan();
+
+            if (AppManager.Instance != null)
+                AppManager.Instance.StopScan();
         }
 
-        private void RefreshCatalogStatusFromManager()
+        private void RefreshCatalogStatus()
         {
             var manager = global::ClientCatalogManager.Instance ?? FindObjectOfType<global::ClientCatalogManager>();
 
-            if (manager != null && manager.IsLoaded)
-                SetCatalogUploadStatus(true, $"Client products loaded successfully: {manager.ItemsCount} items");
+            if (manager != null)
+            {
+                manager.Load();
+
+                if (manager.IsLoaded)
+                    catalogMessage = "Catalog: Loaded (" + manager.ItemsCount + " items)";
+                else
+                    catalogMessage = "Catalog: Not Loaded";
+            }
             else
-                SetCatalogUploadStatus(null, "Client products file: not uploaded");
+            {
+                catalogMessage = "Catalog: Not Loaded";
+            }
         }
 
-        public void SetCatalogUploadStatus(bool? success, string message)
+        public void SetCatalogUploadStatus(bool? success, string text)
         {
-            catalogUploadMessage = message;
+            RefreshCatalogStatus();
+
+            if (!string.IsNullOrEmpty(text))
+                catalogMessage = text;
 
             if (success == true)
-            {
-                catalogUploadColor = new Color(0.25f, 1f, 0.25f);
-                statusMessage = "Client products file uploaded successfully";
-            }
+                statusMessage = "Client products operation completed";
             else if (success == false)
-            {
-                catalogUploadColor = new Color(1f, 0.3f, 0.3f);
                 statusMessage = "Client products operation failed";
-            }
             else
-            {
-                catalogUploadColor = Color.yellow;
-            }
+                statusMessage = text;
         }
     }
 }
