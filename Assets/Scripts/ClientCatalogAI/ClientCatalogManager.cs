@@ -4,14 +4,32 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 
+[Serializable]
+public class ClientCatalog
+{
+    public string client_name;
+    public System.Collections.Generic.List<CatalogItem> items;
+}
+
+[Serializable]
+public class CatalogItem
+{
+    public string sku;
+    public string name;
+    public string category;
+    public string barcode;
+    public string visual_class;
+    public string image_hint;
+}
+
 public class ClientCatalogManager : MonoBehaviour
 {
     public static ClientCatalogManager Instance;
 
-    [SerializeField] private ClientCatalog catalog;
+    private ClientCatalog catalog;
     private string path;
 
-    public bool IsLoaded { get; private set; } = false;
+    public bool IsLoaded { get; private set; }
     public int ItemsCount => catalog?.items?.Count ?? 0;
     public string ClientName => string.IsNullOrEmpty(catalog?.client_name) ? "Unknown Client" : catalog.client_name;
 
@@ -24,10 +42,11 @@ public class ClientCatalogManager : MonoBehaviour
 
     public void Load()
     {
+        IsLoaded = false;
+
         if (!File.Exists(path))
         {
-            IsLoaded = false;
-            Debug.LogWarning("[Catalog] No file found: " + path);
+            Debug.LogWarning("[Catalog] File not found: " + path);
             return;
         }
 
@@ -36,67 +55,98 @@ public class ClientCatalogManager : MonoBehaviour
             string json = File.ReadAllText(path, Encoding.UTF8);
             catalog = JsonUtility.FromJson<ClientCatalog>(json);
             IsLoaded = catalog != null && catalog.items != null && catalog.items.Count > 0;
-            Debug.Log("[Catalog] Loaded " + ItemsCount + " items.");
+
+            Debug.Log(IsLoaded
+                ? "[Catalog] Loaded products: " + ItemsCount
+                : "[Catalog] File exists but no valid products found.");
         }
         catch (Exception ex)
         {
+            Debug.LogError("[Catalog] Load failed: " + ex.Message);
             IsLoaded = false;
-            Debug.LogError("[Catalog] Failed to load JSON: " + ex);
         }
     }
 
-    public CatalogItem[] GetItems()
+    public CatalogItem MatchByVisual(string detectedLabel)
     {
-        if (catalog == null || catalog.items == null) return new CatalogItem[0];
-        return catalog.items.ToArray();
-    }
+        if (!IsLoaded || catalog?.items == null || string.IsNullOrEmpty(detectedLabel))
+            return null;
 
-    public CatalogItem MatchByVisual(string detectedClass)
-    {
-        if (catalog?.items == null || string.IsNullOrEmpty(detectedClass)) return null;
+        string label = Normalize(detectedLabel);
 
-        string detected = Normalize(detectedClass);
-        return catalog.items.FirstOrDefault(i =>
-            !string.IsNullOrEmpty(i.visual_class) &&
-            (Normalize(i.visual_class) == detected || detected.Contains(Normalize(i.visual_class)) || Normalize(i.visual_class).Contains(detected))
+        return catalog.items.FirstOrDefault(item =>
+            MatchText(label, item.visual_class) ||
+            MatchText(label, item.name) ||
+            MatchText(label, item.category) ||
+            MatchText(label, item.image_hint)
         );
     }
 
-    public CatalogItem MatchByBarcode(string code)
+    public string BuildDetectionDisplayName(string detectedLabel)
     {
-        if (catalog?.items == null || string.IsNullOrEmpty(code)) return null;
-        return catalog.items.FirstOrDefault(i => !string.IsNullOrEmpty(i.barcode) && i.barcode.Trim() == code.Trim());
+        CatalogItem item = MatchByVisual(detectedLabel);
+
+        if (item == null)
+            return detectedLabel;
+
+        string productName = string.IsNullOrEmpty(item.name) ? detectedLabel : item.name;
+        string sku = string.IsNullOrEmpty(item.sku) ? "" : " | SKU: " + item.sku;
+
+        return productName + sku;
     }
 
     public string BuildReportText()
     {
-        Load();
-        if (!IsLoaded) return "Catalog not loaded.\nPlease upload client products file first.";
+        if (!IsLoaded || catalog?.items == null || catalog.items.Count == 0)
+            return "Catalog not loaded.\nPlease upload client products file first.";
 
-        var sb = new StringBuilder();
+        StringBuilder sb = new StringBuilder();
+
         sb.AppendLine("CLIENT PRODUCTS REPORT");
         sb.AppendLine("Client: " + ClientName);
         sb.AppendLine("Total Products: " + ItemsCount);
-        sb.AppendLine("------------------------------");
+        sb.AppendLine("--------------------------------");
 
         for (int i = 0; i < catalog.items.Count; i++)
         {
-            var item = catalog.items[i];
+            CatalogItem item = catalog.items[i];
+
             sb.AppendLine((i + 1) + ". " + Safe(item.name));
             sb.AppendLine("SKU: " + Safe(item.sku));
             sb.AppendLine("Category: " + Safe(item.category));
             sb.AppendLine("Barcode: " + Safe(item.barcode));
             sb.AppendLine("Visual Class: " + Safe(item.visual_class));
             sb.AppendLine("Hint: " + Safe(item.image_hint));
-            sb.AppendLine("------------------------------");
+            sb.AppendLine("--------------------------------");
         }
+
         return sb.ToString();
     }
 
-    private string Safe(string value) => string.IsNullOrEmpty(value) ? "-" : value;
+    private bool MatchText(string detected, string catalogValue)
+    {
+        if (string.IsNullOrEmpty(detected) || string.IsNullOrEmpty(catalogValue))
+            return false;
+
+        string value = Normalize(catalogValue);
+
+        return detected == value ||
+               detected.Contains(value) ||
+               value.Contains(detected);
+    }
 
     private string Normalize(string value)
     {
-        return value.ToLowerInvariant().Trim().Replace(" ", "").Replace("_", "").Replace("-", "");
+        return value == null
+            ? ""
+            : value.ToLower()
+                   .Trim()
+                   .Replace("_", " ")
+                   .Replace("-", " ");
+    }
+
+    private string Safe(string value)
+    {
+        return string.IsNullOrEmpty(value) ? "-" : value;
     }
 }
