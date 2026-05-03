@@ -64,7 +64,6 @@ namespace NomadGo.Vision
         public void StartProcessing()
         {
             EnsureEngine();
-
             IsProcessing = true;
             Debug.Log("[FrameProcessor] Started.");
         }
