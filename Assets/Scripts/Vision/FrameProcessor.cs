@@ -73,7 +73,6 @@ namespace NomadGo.Vision
             IsProcessing = false;
             LatestDetections.Clear();
             OnDetectionsUpdated?.Invoke(LatestDetections);
-
             Debug.Log("[FrameProcessor] Stopped.");
         }
 
@@ -98,9 +97,6 @@ namespace NomadGo.Vision
             {
                 LatestDetections = detections;
                 OnDetectionsUpdated?.Invoke(LatestDetections);
-
-                if (Time.frameCount % 30 == 0)
-                    Debug.Log("[FrameProcessor] Detections: " + LatestDetections.Count);
             }
 
             Destroy(frame);
@@ -110,7 +106,7 @@ namespace NomadGo.Vision
         {
             try
             {
-                return ScreenCapture.CaptureScreenshotAsTexture();
+                return UnityEngine.ScreenCapture.CaptureScreenshotAsTexture();
             }
             catch (Exception ex)
             {
