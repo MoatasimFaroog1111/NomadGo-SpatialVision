@@ -37,6 +37,17 @@ namespace NomadGo.AppShell
             statusMessage = msg;
         }
 
+        // FIX CS1501: overloads called by CatalogUploader and CatalogReportExporter
+        public void SetCatalogUploadStatus(bool? success, string msg)
+        {
+            statusMessage = msg;
+        }
+
+        public void SetCatalogUploadStatus(bool success, string msg)
+        {
+            statusMessage = msg;
+        }
+
         private void EnsureCatalogSystem()
         {
             var existing = GameObject.Find("CatalogSystem");

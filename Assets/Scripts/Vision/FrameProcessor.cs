@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
+// FIX CS1069: ScreenCapture is in UnityEngine.ScreenCaptureModule — add explicit using
+using ScreenCapture = UnityEngine.ScreenCapture;
 
 namespace NomadGo.Vision
 {
